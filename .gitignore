@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.tools/
+.DS_Store
+node_modules
+.next/
+/recordings/
+/agentic-awesome-skills/
