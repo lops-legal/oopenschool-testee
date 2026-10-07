@@ -19,6 +19,7 @@ export default function HardwareCheck({ onComplete, onCancel }) {
   const [isMicTesting, setIsMicTesting] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
   const [micTested, setMicTested] = useState(false);
+  const [micError, setMicError] = useState("");
   const audioCtxRef = useRef(null);
   const micStreamRef = useRef(null);
 
@@ -47,13 +48,15 @@ export default function HardwareCheck({ onComplete, onCancel }) {
   // Mic test with real Web Audio API volume measurement
   const handleStartMicTest = async () => {
     try {
-      setIsMicTesting(true);
+      setMicError("");
+      setMicTested(false);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = stream;
       
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioCtx();
       audioCtxRef.current = audioCtx;
+      if (audioCtx.state === "suspended") await audioCtx.resume();
       
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
@@ -62,6 +65,9 @@ export default function HardwareCheck({ onComplete, onCancel }) {
 
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
+      let detectedFrames = 0;
+
+      setIsMicTesting(true);
 
       const updateVolume = () => {
         if (!audioCtxRef.current || audioCtxRef.current.state === "closed") return;
@@ -73,25 +79,21 @@ export default function HardwareCheck({ onComplete, onCancel }) {
         const average = sum / bufferLength;
         const normalized = Math.min(100, Math.round((average / 128) * 100));
         setMicVolume(normalized);
+        if (normalized >= 2) {
+          detectedFrames += 1;
+          if (detectedFrames >= 3) setMicTested(true);
+        }
         requestAnimationFrame(updateVolume);
       };
       updateVolume();
-
-      setTimeout(() => {
-        setMicTested(true);
-      }, 2000);
     } catch (err) {
       console.warn("Microphone access denied or error:", err);
-      // Fallback for mic test simulation if permission denied or unavailable
-      let val = 0;
-      const interval = setInterval(() => {
-        val = Math.floor(Math.random() * 60) + 20;
-        setMicVolume(val);
-      }, 150);
-      setTimeout(() => {
-        clearInterval(interval);
-        setMicTested(true);
-      }, 3000);
+      handleStopMicTest();
+      setMicError(
+        err.name === "NotAllowedError"
+          ? "Acesso ao microfone negado. Autorize o microfone no navegador e tente novamente."
+          : err.message || "Nao foi possivel acessar o microfone."
+      );
     }
   };
 
@@ -235,6 +237,12 @@ export default function HardwareCheck({ onComplete, onCancel }) {
               ? "Captando áudio... Fale uma frase para testar."
               : "Clique abaixo para autorizar e testar a entrada de áudio."}
           </div>
+
+          {micError && (
+            <div style={{ color: "var(--danger, #b42318)", marginBottom: 14, fontSize: 14 }}>
+              {micError}
+            </div>
+          )}
 
           {!isMicTesting ? (
             <button className="btn primary" onClick={handleStartMicTest}>

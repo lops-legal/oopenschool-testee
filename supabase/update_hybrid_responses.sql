@@ -33,7 +33,7 @@ alter table public.sessions enable row level security;
 drop policy if exists sessions_select_own on public.sessions;
 create policy sessions_select_own
 on public.sessions for select to authenticated
-using (participant_id = (select auth.uid()) or public.is_admin());
+using (participant_id = (select auth.uid()));
 
 drop policy if exists sessions_insert_own on public.sessions;
 create policy sessions_insert_own
@@ -43,8 +43,8 @@ with check (participant_id = (select auth.uid()));
 drop policy if exists sessions_update_own on public.sessions;
 create policy sessions_update_own
 on public.sessions for update to authenticated
-using (participant_id = (select auth.uid()) or public.is_admin())
-with check (participant_id = (select auth.uid()) or public.is_admin());
+using (participant_id = (select auth.uid()))
+with check (participant_id = (select auth.uid()));
 
 grant select, insert, update on public.sessions to authenticated;
 

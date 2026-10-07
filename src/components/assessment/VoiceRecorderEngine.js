@@ -63,7 +63,17 @@ export default function VoiceRecorderEngine({
     clearTimers();
     // Feedback visual imediato antes do navegador finalizar o MediaRecorder.
     if (mountedRef.current) setStatus("stopping");
-    recorder.stop();
+    try {
+      // `stop()` always emits one final dataavailable event. Recording without a
+      // timeslice is more reliable on Safari/iOS and avoids zero-byte chunks.
+      recorder.stop();
+    } catch (err) {
+      stoppingRef.current = false;
+      if (mountedRef.current) {
+        setStatus("error");
+        setErrorMessage(err.message || "Nao foi possivel finalizar a gravacao.");
+      }
+    }
   };
 
   // Upload para Supabase Storage + registro em responses (comportamento original:
@@ -119,6 +129,11 @@ export default function VoiceRecorderEngine({
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
 
+        const audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack || audioTrack.readyState !== "live") {
+          throw new Error("O microfone selecionado nao esta disponivel.");
+        }
+
         const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         mediaRecorderRef.current = recorder;
@@ -126,10 +141,11 @@ export default function VoiceRecorderEngine({
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) audioChunksRef.current.push(e.data);
         };
-        recorder.onerror = () => {
+        recorder.onerror = (event) => {
           clearTimers(); stopTracks();
           if (!cancelled && mountedRef.current) {
-            setStatus("error"); setErrorMessage("O navegador interrompeu a gravacao.");
+            setStatus("error");
+            setErrorMessage(event?.error?.message || "O navegador interrompeu a gravacao.");
           }
         };
         recorder.onstop = async () => {
@@ -158,7 +174,9 @@ export default function VoiceRecorderEngine({
           }
         };
 
-        recorder.start(1000);
+        // Do not pass a timeslice: some Safari/Chromium combinations can emit
+        // only empty periodic chunks even though the microphone is active.
+        recorder.start();
         setStatus("recording");
 
         // Cronometro informativo: conta o tempo decorrido, sem interromper a gravacao.
