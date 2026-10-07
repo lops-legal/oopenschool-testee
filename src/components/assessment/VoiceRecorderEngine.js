@@ -1,91 +1,97 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { AlertCircle, Mic, RotateCcw, Square } from "lucide-react";
+import { Mic, AlertCircle, Square, RotateCcw, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 const MIME_TYPES = [
   "audio/webm;codecs=opus",
   "audio/webm",
   "audio/ogg;codecs=opus",
-  "audio/mp4"
+  "audio/mp4",
 ];
 
+function extensionFor(mimeType) {
+  if (!mimeType) return "webm";
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mp4")) return "m4a";
+  return "webm";
+}
+
 export default function VoiceRecorderEngine({
-  seconds,
-  silencePrompt,
-  silenceAfter,
   participantId,
   participantName,
   questionId,
-  onFinishResponse
+  sessionId,
+  seconds,
+  silencePrompt,
+  silenceAfter,
+  onFinishResponse,
 }) {
-  const [timeLeft, setTimeLeft] = useState(seconds);
   const [status, setStatus] = useState("requesting");
+  const [timeLeft, setTimeLeft] = useState(seconds);
   const [errorMessage, setErrorMessage] = useState("");
   const [showSilenceWarning, setShowSilenceWarning] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
   const mediaRecorderRef = useRef(null);
-  const streamRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const silenceTimerRef = useRef(null);
-  const stoppingRef = useRef(false);
   const mountedRef = useRef(true);
+  const stoppingRef = useRef(false);
   const onFinishResponseRef = useRef(onFinishResponse);
-
-  useEffect(() => {
-    onFinishResponseRef.current = onFinishResponse;
-  }, [onFinishResponse]);
+  onFinishResponseRef.current = onFinishResponse;
 
   const clearTimers = () => {
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    timerIntervalRef.current = null;
-    silenceTimerRef.current = null;
+    clearInterval(timerIntervalRef.current);
+    clearTimeout(silenceTimerRef.current);
   };
 
   const stopTracks = () => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   };
 
   const stopRecording = () => {
     if (stoppingRef.current) return;
-
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state !== "recording") return;
-
     stoppingRef.current = true;
     clearTimers();
     setStatus("saving");
     recorder.stop();
   };
 
+  // Upload para Supabase Storage
   const uploadRecording = async (blob) => {
-    const formData = new FormData();
-    const extension = blob.type.includes("ogg")
-      ? "ogg"
-      : blob.type.includes("mp4")
-        ? "m4a"
-        : "webm";
+    const ext = extensionFor(blob.type);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = `${participantId}/${sessionId}/${questionId}__${timestamp}.${ext}`;
 
-    formData.append("participantId", participantId);
-    formData.append("participantName", participantName);
-    formData.append("questionId", questionId);
-    formData.append("audio", blob, `${questionId}.${extension}`);
+    const { error: uploadError } = await supabase.storage
+      .from("recordings")
+      .upload(filePath, blob, {
+        contentType: blob.type || "audio/webm",
+        upsert: false,
+      });
 
-    const response = await fetch("/api/recordings", {
-      method: "POST",
-      body: formData
+    if (uploadError) throw new Error("Falha no upload: " + uploadError.message);
+
+    // Salvar metadados no banco
+    const { error: dbError } = await supabase.from("responses").insert({
+      participant_id: participantId,
+      session_id: sessionId,
+      question_id: questionId,
+      audio_path: filePath,
+      duration_seconds: seconds - timeLeft,
+      recorded_at: new Date().toISOString(),
     });
-    const result = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      throw new Error(result.error || "Não foi possível salvar o áudio.");
-    }
+    if (dbError) console.warn("Metadados nao salvos:", dbError.message);
 
-    return result;
+    return { saved: true, audioPath: filePath };
   };
 
   useEffect(() => {
@@ -101,68 +107,48 @@ export default function VoiceRecorderEngine({
     const startRecording = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-          throw new Error("Este navegador não oferece suporte à gravação de áudio.");
+          throw new Error("Este navegador nao suporta gravacao de audio.");
         }
-
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
-
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
-        const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+
+        const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         mediaRecorderRef.current = recorder;
 
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
         };
-
         recorder.onerror = () => {
-          clearTimers();
-          stopTracks();
+          clearTimers(); stopTracks();
           if (!cancelled && mountedRef.current) {
-            setStatus("error");
-            setErrorMessage("O navegador interrompeu a gravação. Tente novamente.");
+            setStatus("error"); setErrorMessage("O navegador interrompeu a gravacao.");
           }
         };
-
         recorder.onstop = async () => {
-          clearTimers();
-          stopTracks();
-
+          clearTimers(); stopTracks();
           const audioType = recorder.mimeType || mimeType || "audio/webm";
           const blob = new Blob(audioChunksRef.current, { type: audioType });
-
           if (blob.size === 0) {
             if (!cancelled && mountedRef.current) {
-              stoppingRef.current = false;
-              setStatus("error");
-              setErrorMessage("Nenhum áudio foi capturado. Verifique o microfone e tente novamente.");
+              stoppingRef.current = false; setStatus("error");
+              setErrorMessage("Nenhum audio capturado. Verifique o microfone.");
             }
             return;
           }
-
           try {
-            const savedRecording = await uploadRecording(blob);
+            const result = await uploadRecording(blob);
             if (!cancelled && mountedRef.current) {
-              setStatus("saved");
-              onFinishResponseRef.current?.(savedRecording);
+              setStatus("saved"); onFinishResponseRef.current?.(result);
             }
-          } catch (error) {
-            console.error("Audio upload error:", error);
+          } catch (err) {
+            console.error("Upload error:", err);
             if (!cancelled && mountedRef.current) {
-              stoppingRef.current = false;
-              setStatus("error");
-              setErrorMessage(error.message || "Não foi possível salvar o áudio.");
+              stoppingRef.current = false; setStatus("error");
+              setErrorMessage(err.message || "Nao foi possivel salvar o audio.");
             }
           }
         };
@@ -171,12 +157,9 @@ export default function VoiceRecorderEngine({
         setStatus("recording");
 
         timerIntervalRef.current = setInterval(() => {
-          setTimeLeft((previous) => {
-            if (previous <= 1) {
-              setTimeout(stopRecording, 0);
-              return 0;
-            }
-            return previous - 1;
+          setTimeLeft((prev) => {
+            if (prev <= 1) { setTimeout(stopRecording, 0); return 0; }
+            return prev - 1;
           });
         }, 1000);
 
@@ -185,70 +168,57 @@ export default function VoiceRecorderEngine({
             if (!cancelled && mountedRef.current) setShowSilenceWarning(true);
           }, silenceAfter * 1000);
         }
-      } catch (error) {
-        console.warn("MediaRecorder microphone access error:", error);
+      } catch (err) {
         stopTracks();
         if (mountedRef.current && !cancelled) {
           setStatus("error");
           setErrorMessage(
-            error.name === "NotAllowedError"
-              ? "O acesso ao microfone foi negado. Autorize o microfone no navegador e tente novamente."
-              : error.message || "Não foi possível acessar o microfone."
+            err.name === "NotAllowedError"
+              ? "Acesso ao microfone negado. Autorize e tente novamente."
+              : err.message || "Nao foi possivel acessar o microfone."
           );
         }
       }
     };
 
     startRecording();
-
     return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      clearTimers();
-      const recorder = mediaRecorderRef.current;
-      if (recorder?.state === "recording") recorder.stop();
+      cancelled = true; mountedRef.current = false; clearTimers();
+      const r = mediaRecorderRef.current;
+      if (r?.state === "recording") r.stop();
       stopTracks();
     };
-  }, [participantId, participantName, questionId, retryKey, seconds, silenceAfter, silencePrompt]);
+  }, [participantId, participantName, questionId, sessionId, retryKey, seconds, silenceAfter, silencePrompt]);
 
-  const formatTime = (totalSeconds) => {
-    const minutes = Math.floor(totalSeconds / 60);
-    const remainingSeconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-  };
+  const formatTime = (s) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  if (status === "requesting") {
-    return (
-      <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
-        <Mic size={30} style={{ marginBottom: 12 }} />
-        <h3>Solicitando acesso ao microfone</h3>
-        <p className="muted">Autorize o uso do microfone para iniciar a gravação.</p>
-      </div>
-    );
-  }
+  if (status === "requesting") return (
+    <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
+      <Mic size={30} style={{ marginBottom: 12 }} />
+      <h3>Solicitando acesso ao microfone</h3>
+      <p className="muted">Autorize o microfone para iniciar a gravacao.</p>
+    </div>
+  );
 
-  if (status === "saving" || status === "saved") {
-    return (
-      <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>💾</div>
-        <h3>{status === "saved" ? "Áudio salvo" : "Salvando áudio da resposta"}</h3>
-        <p className="muted">Confirmando o arquivo no servidor antes de prosseguir...</p>
-      </div>
-    );
-  }
+  if (status === "saving" || status === "saved") return (
+    <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
+      <Loader2 size={32} className="spin" style={{ marginBottom: 12 }} />
+      <h3>{status === "saved" ? "Audio salvo" : "Salvando audio..."}</h3>
+      <p className="muted">Enviando para o servidor antes de prosseguir...</p>
+    </div>
+  );
 
-  if (status === "error") {
-    return (
-      <div className="card" style={{ textAlign: "center", padding: 30, marginTop: 20 }}>
-        <AlertCircle color="var(--danger, #b42318)" size={32} style={{ marginBottom: 12 }} />
-        <h3>Não foi possível gravar</h3>
-        <p className="muted" style={{ margin: "10px 0 18px" }}>{errorMessage}</p>
-        <button className="btn primary" onClick={() => setRetryKey((value) => value + 1)}>
-          <RotateCcw size={16} /> Tentar novamente
-        </button>
-      </div>
-    );
-  }
+  if (status === "error") return (
+    <div className="card" style={{ textAlign: "center", padding: 30, marginTop: 20 }}>
+      <AlertCircle color="var(--danger, #b42318)" size={32} style={{ marginBottom: 12 }} />
+      <h3>Nao foi possivel gravar</h3>
+      <p className="muted" style={{ margin: "10px 0 18px" }}>{errorMessage}</p>
+      <button className="btn primary" onClick={() => setRetryKey((v) => v + 1)}>
+        <RotateCcw size={16} /> Tentar novamente
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -259,31 +229,16 @@ export default function VoiceRecorderEngine({
         </div>
         <div className="timer">{formatTime(timeLeft)}</div>
       </div>
-
-      <div className="wave">
-        <i /><i /><i /><i /><i /><i /><i /><i /><i />
-      </div>
-
+      <div className="wave"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>
       {showSilenceWarning && (
-        <div
-          className="card"
-          style={{
-            padding: "12px 18px",
-            background: "#fff8e6",
-            border: "1px solid var(--gold)",
-            borderRadius: 14,
-            margin: "14px 0",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 14
-          }}
-        >
+        <div className="card" style={{
+          padding: "12px 18px", background: "#fff8e6", border: "1px solid var(--gold)",
+          borderRadius: 14, margin: "14px 0", display: "flex", alignItems: "center", gap: 10, fontSize: 14
+        }}>
           <AlertCircle color="var(--gold)" size={20} />
-          <span><strong>Aviso de silêncio:</strong> {silencePrompt}</span>
+          <span><strong>Aviso de silencio:</strong> {silencePrompt}</span>
         </div>
       )}
-
       <div className="actions" style={{ justifyContent: "center", marginTop: 20 }}>
         <button className="btn primary" onClick={stopRecording}>
           <Square size={16} fill="white" /> Concluir resposta

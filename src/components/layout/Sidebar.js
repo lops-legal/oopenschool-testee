@@ -90,7 +90,7 @@ export default function Sidebar({ activePage, setActivePage, onLogout }) {
               <strong>Lucas</strong>
               <div className="muted" style={{ fontSize: 12 }}>Participante</div>
             </div>
-            <ChevronUp size={16} className={`user-mini-chevron ${menuOpen ? "open" : ""}`} />
+            <ChevronUp size={16} className={"user-mini-chevron " + (menuOpen ? "open" : "")} />
           </button>
         </div>
       </aside>
@@ -115,7 +115,7 @@ export default function Sidebar({ activePage, setActivePage, onLogout }) {
             return (
               <button
                 key={item.id}
-                className={`mobile-nav-btn ${isActive ? "active" : ""}`}
+                className={"mobile-nav-btn " + (isActive ? "active" : "")}
                 onClick={() => setActivePage(item.id)}
               >
                 <Icon size={18} />
