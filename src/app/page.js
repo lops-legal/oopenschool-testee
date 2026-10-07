@@ -556,7 +556,7 @@ export default function Home() {
                     </div>
                     <div className="muted">{currentQuestion?.block}</div>
                   </div>
-                  <div className="badge">{currentQuestion?.id}</div>
+                  <div className="badge">{currentQuestion?.block?.split("—")[1]?.trim() || "Think-Aloud"}</div>
                 </div>
 
                 <div className="card q-card">
