@@ -1,9 +1,9 @@
-// Dados canônicos da avaliação P01 da Open Startup School — FORMA A
+﻿// Dados canônicos da avaliação P01 da Open Startup School — FORMA A
 // Transcrito integralmente com alta precisão via Groq Whisper API (whisper-large-v3)
 
 export const OPENING_AUDIO = {
-  id: "TA-intro",
-  filename: "TA-intro.mp3",
+  id: "TABERTURA",
+  filename: "TABERTURA.mp3",
   title: "Abertura Oficial",
   text: `Bem-vindo à avaliação de competências empreendedoras da Open Startup School. Esta experiência não procura dizer se você é ou não empreendedor. Queremos observar diferentes tipos de evidência. O que você compreende, experiências que já viveu, como raciocina diante de um problema e como comunica uma proposta. Algumas perguntas têm resposta objetiva, outras não têm uma única resposta correta. Quando pedirmos para pensar em voz alta, diga o que passa pela sua cabeça, inclusive dúvidas e mudanças de ideia. Se você não souber uma resposta, diga que não sabe. Isso também é informação útil. Responda sozinho, sem consultar outras pessoas, internet ou ferramentas de inteligência artificial. Você está usando fones de ouvido. Depois de ouvir cada pergunta, responda falando normalmente. Sua resposta será gravada. Vamos começar!`
 };
