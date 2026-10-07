@@ -39,7 +39,7 @@ export default function Home() {
   // Auth & Session states
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
   // Navigation & Screen states
   const [screen, setScreen] = useState("entry");
@@ -56,6 +56,43 @@ export default function Home() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Restore ongoing session from localStorage on user load
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const saved = localStorage.getItem(`oss_session_${user.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.savedAt && (Date.now() - parsed.savedAt < 24 * 60 * 60 * 1000)) {
+          if (parsed.sessionId) setSessionId(parsed.sessionId);
+          if (typeof parsed.currentStepIndex === "number") setCurrentStepIndex(parsed.currentStepIndex);
+          if (typeof parsed.showOpening === "boolean") setShowOpening(parsed.showOpening);
+          if (parsed.userResponses) setUserResponses(parsed.userResponses);
+          setScreen("assessment");
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to restore session from localStorage", e);
+    }
+  }, [user]);
+
+  // Automatically persist ongoing assessment state to localStorage
+  useEffect(() => {
+    if (!user || screen !== "assessment") return;
+    try {
+      const stateToSave = {
+        sessionId,
+        currentStepIndex,
+        showOpening,
+        userResponses,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(`oss_session_${user.id}`, JSON.stringify(stateToSave));
+    } catch (e) {
+      console.warn("Failed to save session to localStorage", e);
+    }
+  }, [user, screen, sessionId, currentStepIndex, showOpening, userResponses]);
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -85,12 +122,28 @@ export default function Home() {
   };
 
   // Hardware check complete -> Start official opening / assessment
-  const handleHardwareComplete = () => {
+  const handleHardwareComplete = async () => {
+    const newSessId = crypto.randomUUID();
+    setSessionId(newSessId);
     setScreen("assessment");
     setShowOpening(true);
     setCurrentStepIndex(0);
-    setIsAudioFinished(false);
-    setIsReadyToAnswer(false);
+    setUserResponses({});
+
+    if (user?.id) {
+      try {
+        await supabase.from("sessions").upsert({
+          id: newSessId,
+          participant_id: user.id,
+          total_questions: questions.length,
+          form: "A",
+          status: "in_progress",
+          started_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Session table upsert warning:", err);
+      }
+    }
   };
 
   // Move to next step in assessment engine
@@ -124,6 +177,15 @@ export default function Home() {
     } else {
       // Assessment Completed
       setAssessmentStatus("SUBMITTED");
+      if (user) {
+        localStorage.removeItem(`oss_session_${user.id}`);
+        if (sessionId) {
+          supabase.from("sessions").update({
+            status: "completed",
+            completed_at: new Date().toISOString()
+          }).eq("id", sessionId).then(() => {});
+        }
+      }
       setScreen("complete");
     }
   };
