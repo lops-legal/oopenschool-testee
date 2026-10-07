@@ -1,4 +1,19 @@
-<!DOCTYPE html>
+import fs from "fs";
+
+const questions = JSON.parse(fs.readFileSync("questions_forma_a.json", "utf8"));
+const transcriptions = JSON.parse(fs.readFileSync("transcricoes-forma-a.json", "utf8"));
+
+const introData = transcriptions["TA-intro"] || {
+  text: "Bem-vindo à Avaliação de Competências Empreendedoras da Open Startups School.",
+  file: "TABERTURA.mp3"
+};
+
+const finalData = transcriptions["TTELA-FINAL"] || {
+  text: "Avaliação concluída com sucesso. Suas respostas foram salvas com segurança no banco de dados.",
+  file: "TTELA FINAL.mp3"
+};
+
+const htmlContent = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -701,7 +716,7 @@
             </audio>
           </div>
 
-          <div class="prompt-text">Bem-vindo à avaliação de competências empreendedoras da Open Startup School. Esta experiência não procura dizer se você é ou não empreendedor. Queremos observar diferentes tipos de evidência. O que você compreende, experiências que já viveu, como raciocina diante de um problema e como comunica uma proposta. Algumas perguntas têm resposta objetiva, outras não têm uma única resposta correta. Quando pedirmos para pensar em voz alta, diga o que passa pela sua cabeça, inclusive dúvidas e mudanças de ideia. Se você não souber uma resposta, diga que não sabe. Isso também é informação útil. Responda sozinho, sem consultar outras pessoas, internet ou ferramentas de inteligência artificial. Você está usando fones de ouvido. Depois de ouvir cada pergunta, responda falando normalmente. Sua resposta será gravada. Vamos começar!</div>
+          <div class="prompt-text">${introData.text}</div>
 
           <button class="btn btn-primary" style="font-size: 16px; padding: 14px 28px;" onclick="startEvaluation()">
             Iniciar Avaliação Agora →
@@ -778,7 +793,7 @@
           <div class="check-icon">✓</div>
           <h2 style="font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 12px;">Avaliação Concluída!</h2>
           <p style="font-size: 15px; color: var(--text-muted); max-width: 540px; margin: 0 auto 24px; line-height: 1.6;">
-            Obrigado por participar! Sua avaliação foi concluída com sucesso. Agora, suas respostas serão processadas para gerar um laudo formativo com base nas evidências observadas ao longo desta aplicação. Esse laudo foi pensado para apoiar seu desenvolvimento e não representa um diagnóstico psicológico, uma certificação profissional ou uma previsão de sucesso empresarial. Esperamos que esse material contribua para o seu desenvolvimento daqui para frente.
+            ${finalData.text}
           </p>
           <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 16px; max-width: 400px; margin: 0 auto 24px; text-align: left;">
             <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 6px;"><strong>Participante:</strong> <span id="finishUser"></span></div>
@@ -794,7 +809,7 @@
 
   <script>
     // Global Questions Data
-    const QUESTIONS = [{"id":"A-M1","audioFile":"TA-M1.mp3","module":"Bloco 0 — Modelo Mental","seconds":60,"text":"Primeiro, pense em alguém que você consideraria muito competente para empreender. Sem usar uma lista pronta, que conhecimentos, capacidades ou maneiras de agir essa pessoa precisaria ter? Fale tudo o que vier à cabeça e explique brevemente porquê."},{"id":"A-M2","audioFile":"TA-M2.mp3","module":"Bloco 0 — Modelo Mental","seconds":60,"text":"Dessas capacidades que você acabou de citar, quais você acredita que já desenvolveu mais? Conte o que faz você pensar isso."},{"id":"A-M3","audioFile":"TA-M3.mp3","module":"Bloco 0 — Modelo Mental","seconds":60,"text":"E agora, por último, qual capacidade empreendedora você acredita ter desenvolvido menos ou quase nunca ter colocado à prova? Explique."},{"id":"A-K01","audioFile":"TA-K01.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Entrando agora em Knowledge Fundamentals. Uma empresa vende um serviço por R$ 240. Cada venda gera R$ 90 de custos que só existem quando o serviço é prestado. Quanto sobra por venda para ajudar a pagar os custos fixos e gerar resultado? Explique rapidamente sua conta."},{"id":"A-K02","audioFile":"TA-K02.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Uma adolescente usa uma plataforma de preparação para vestibular todos os dias, mas a assinatura é paga pelos pais. Quem é o usuário e quem é o pagador? Pode haver mais de um papel envolvido?"},{"id":"A-K03","audioFile":"TA-K03.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Uma landing page recebeu 1.200 visitas e 24 inscrições. A frase, as pessoas não entenderam a proposta, é um fato observado, uma interpretação, uma hipótese ou uma decisão? Explique."},{"id":"A-K04","audioFile":"TA-K04.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Uma empresa fechou vendas suficientes para mostrar lucro no mês, mas os clientes só pagarão daqui a 90 dias e os salários vencem amanhã. A empresa pode ter lucro e mesmo assim ficar sem dinheiro? Por quê?"},{"id":"A-K05","audioFile":"TA-K05.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Antes de um teste, uma equipe decide que continuará a iniciativa somente se conseguir pelo menos 30 inscrições qualificadas em 48 horas. Por que definir esse critério antes de ver o resultado pode melhorar a qualidade da decisão?"},{"id":"A-K06","audioFile":"TA-K06.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Agora você precisa tomar duas decisões. A primeira pode ser revertida amanhã com baixo custo. A segunda envolve um contrato de dois anos e alto impacto financeiro. Você deveria exigir o mesmo nível de análise para as duas? O que muda?"},{"id":"A-K07","audioFile":"TA-K07.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Seu time precisa de uma competência de design por apenas duas semanas e ninguém domina isso internamente. Além de contratar uma pessoa em tempo integral, que outras rotas você consideraria? Como escolheria entre elas?"},{"id":"A-K08","audioFile":"TA-K08.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":60,"text":"O canal A custa R$ 120 para adquirir um cliente. Esse cliente deixa R$ 40 por mês depois dos custos diretos e permanece em média 10 meses. O canal B custa R$ 300 para adquirir um cliente, deixa R$ 90 por mês e permanece em média 20 meses. Qual canal parece economicamente melhor por essa conta simplificada? Explique."},{"id":"A-K09","audioFile":"TA-K09.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Bem, um experimento funciona muito bem em uma universidade onde o fundador já é conhecido e tem forte reputação. Podemos concluir que o mesmo resultado ocorrerá em outras universidades? O que ainda precisaríamos saber?"},{"id":"A-K10","audioFile":"TA-K10.mp3","module":"Bloco 1 — Conhecimentos fundamentais","seconds":45,"text":"Para finalizar este bloco, uma ferramenta de inteligência artificial acelera muito uma análise importante, mas ninguém sabe qual é sua taxa de erro, e os erros são difíceis de perceber. Se essa análise for usada em uma decisão de alto impacto, como você desenharia o uso dessa inteligência artificial?"},{"id":"A-PB01","audioFile":"TA-PB01.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Entrando no bloco, Prior Behavior. Nos conte alguma coisa que você tenha criado, organizado ou colocado no mundo fora de uma obrigação puramente acadêmica. O que era e qual parte dependia diretamente de você?"},{"id":"A-PB02","audioFile":"TA-PB02.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Você já vendeu alguma coisa, cobrou por um serviço, conseguiu uma contribuição financeira ou convenceu alguém a pagar por algo? Nos conte o episódio e o que você fez pessoalmente."},{"id":"A-PB03","audioFile":"TA-PB03.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Conta pra gente uma situação em que você precisou convencer alguém a colocar tempo, acesso, reputação, dinheiro ou outro recurso em algo que você estava propondo. O que você pediu e o que aconteceu?"},{"id":"A-PB04","audioFile":"TA-PB04.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Consegue lembrar de alguma decisão importante que você precisou tomar sem ter todas as informações? O que estava incerto? Como decidiu? E o que aconteceu depois?"},{"id":"A-PB05","audioFile":"TA-PB05.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Nos conte uma situação em que uma evidência fez você mudar de opinião, de plano ou de prioridade. O que você acreditava antes e o que mudou?"},{"id":"A-PB06","audioFile":"TA-PB06.mp3","module":"Bloco 2 — Experiências Anteriores","seconds":45,"text":"Conte um erro, tentativa ou iniciativa sua que não funcionou como você esperava. Qual foi a consequência concreta e o que você fez depois?"},{"id":"A-PITCH-PREP","audioFile":"TA-PITCH-PREP.mp3","module":"Bloco 3 — Desafio de Negócio","seconds":60,"text":"Agora, organize sua proposta. Considere que você terá 90 segundos para conversar com uma pessoa que pode abrir acesso a estudantes e colocar o primeiro experimento em movimento. Prepare-se para explicar. Qual é o desafio? Para quem isso importa? O que você faria primeiro? Por que essa abordagem faz sentido? E que próximo passo concreto você pediria?"},{"id":"A-PITCH","audioFile":"TA-PITCH.mp3","module":"Bloco 4 — Síntese e Apresentação","seconds":90,"text":"Fique à vontade para começar. Você tem até 90 segundos."},{"id":"A-PITCH-REFLECT","audioFile":"TA-PITCH-REFLECT.mp3","module":"Bloco 5 — Fechamento","seconds":45,"text":"Boa! Se você pudesse melhorar apenas uma coisa nessa proposta antes de agir amanhã, o que mudaria e por quê?"}];
+    const QUESTIONS = ${JSON.stringify(questions)};
     
     // Supabase Client Setup
     let supabaseClient = null;
@@ -954,7 +969,7 @@
         const isActive = currentQIndex === idx;
         const btn = document.createElement('button');
         btn.className = 'nav-item ' + (isActive ? 'active ' : '') + (isAnswered ? 'completed' : '');
-        btn.innerHTML = `<span>${idx + 1}. ${q.id}</span><span class="nav-badge">${q.seconds}s</span>`;
+        btn.innerHTML = \`<span>\${idx + 1}. \${q.id}</span><span class="nav-badge">\${q.seconds}s</span>\`;
         btn.onclick = () => loadQuestion(idx);
         nav.appendChild(btn);
       });
@@ -985,7 +1000,7 @@
       document.getElementById('viewFinished').style.display = 'none';
 
       document.getElementById('qModuleBadge').innerText = q.module;
-      document.getElementById('qTitle').innerText = `Pergunta ${idx + 1} de ${QUESTIONS.length}`;
+      document.getElementById('qTitle').innerText = \`Pergunta \${idx + 1} de \${QUESTIONS.length}\`;
       document.getElementById('qTargetTime').innerText = q.seconds + 's';
       document.getElementById('qAudioName').innerText = q.audioFile;
       document.getElementById('qPromptText').innerText = q.text;
@@ -1052,7 +1067,7 @@
       recordedDurationSeconds = elapsed;
       const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
       const secs = String(elapsed % 60).padStart(2, '0');
-      document.getElementById('timerDisplay').innerText = `${mins}:${secs}`;
+      document.getElementById('timerDisplay').innerText = \`\${mins}:\${secs}\`;
     }
 
     function stopRecording() {
@@ -1098,7 +1113,7 @@
       statusEl.innerText = 'Salvando resposta no Supabase...';
 
       const ext = recordedBlob.type.includes('ogg') ? 'ogg' : recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
-      const filePath = `${currentUser.id}/${currentSessionId}_${q.id}.${ext}`;
+      const filePath = \`\${currentUser.id}/\${currentSessionId}_\${q.id}.\${ext}\`;
 
       if (supabaseClient) {
         try {
@@ -1128,4 +1143,8 @@
     }
   </script>
 </body>
-</html>
+</html>`;
+
+fs.writeFileSync("index.html", htmlContent);
+fs.writeFileSync("C:/Users/100OS/Documents/oopenschool-testee/public/standalone.html", htmlContent);
+console.log("Static index.html generated successfully in both locations!");

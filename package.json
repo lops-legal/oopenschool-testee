@@ -1,15 +1,30 @@
 {
   "name": "open-startup-school-p01",
-  "version": "0.4.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "MVP de transcricao de audio com a API da Groq",
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "benchmark": "node benchmark/router-load.js",
+    "transcribe:local": "local-whisper-router\\.venv\\Scripts\\python.exe local-whisper-router\\transcribe.py --model small --device cpu --compute-type int8",
+    "transcribe:amabile": "local-whisper-router\\.venv\\Scripts\\python.exe local-whisper-router\\transcribe.py --input testes-audios-amabile --output transcricoes-amabile --model small --model-dir C:\\Users\\100OS\\.cache\\huggingface\\hub --device cpu --compute-type int8 --local-files-only",
+    "transcribe": "node src/transcribe.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "dotenv": "^17.4.2",
+    "fluent-ffmpeg": "^2.1.3",
+    "groq-sdk": "^1.6.0",
     "lucide-react": "^0.475.0",
     "next": "^15.1.7",
     "react": "^19.0.0",

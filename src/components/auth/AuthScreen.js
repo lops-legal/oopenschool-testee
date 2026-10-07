@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { LogIn, UserPlus, Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function AuthScreen({ onAuthSuccess }) {
@@ -18,19 +18,58 @@ export default function AuthScreen({ onAuthSuccess }) {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setError("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.");
+      return;
+    }
     setLoading(true);
     setError("");
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: form.email.trim(),
-      password: form.password,
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: form.email.trim(),
+        password: form.password,
+      });
+      if (error) {
+        setError(
+          /failed to fetch|network/i.test(error.message)
+            ? "Não foi possível conectar ao Supabase. Verifique sua conexão e tente novamente."
+            : "Email ou senha incorretos. Verifique e tente novamente."
+        );
+        return;
+      }
+      onAuthSuccess(data.user);
+    } catch (requestError) {
+      console.error("Login request failed:", requestError);
+      setError("Não foi possível conectar ao Supabase. Verifique sua conexão e tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!isSupabaseConfigured) {
+      setError("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
     });
-    setLoading(false);
-    if (error) { setError("Email ou senha incorretos. Verifique e tente novamente."); return; }
-    onAuthSuccess(data.user);
+    if (oauthError) {
+      console.error("Google OAuth failed:", oauthError);
+      setError("Não foi possível iniciar o login com Google. Verifique a configuração do provedor.");
+      setLoading(false);
+    }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setError("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.");
+      return;
+    }
     if (!form.name.trim()) { setError("Informe seu nome completo."); return; }
     if (form.password.length < 6) { setError("A senha deve ter ao menos 6 caracteres."); return; }
     setLoading(true);
@@ -51,11 +90,23 @@ export default function AuthScreen({ onAuthSuccess }) {
     }
 
     if (data?.session) {
-      await supabase.from("participants").upsert({
-        id: data.user.id,
-        full_name: form.name.trim(),
-        email: form.email.trim(),
-      });
+      const { data: existingProfile, error: profileLookupError } = await supabase
+        .from("participants")
+        .select("id")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      const profileError = profileLookupError || (!existingProfile
+        ? (await supabase.from("participants").insert({
+            id: data.user.id,
+            full_name: form.name.trim(),
+            email: form.email.trim(),
+          })).error
+        : null);
+      if (profileError) {
+        console.error("Failed to create participant profile:", profileError);
+        setError(`Conta criada, mas não foi possível preparar seu perfil. ${profileError.message}`);
+        return;
+      }
       onAuthSuccess(data.user);
     } else {
       setError("Conta criada! Faca login agora.");
@@ -76,6 +127,22 @@ export default function AuthScreen({ onAuthSuccess }) {
         </h2>
 
         {error && <div className="auth-error">{error}</div>}
+
+        <button
+          className="btn"
+          type="button"
+          disabled={loading}
+          onClick={handleGoogleSignIn}
+          style={{ width: "100%", justifyContent: "center", border: "1px solid var(--border)", marginBottom: 18 }}
+        >
+          <span style={{ color: "#4285F4", fontWeight: 800, fontSize: "1.1rem" }}>G</span>
+          Continuar com Google
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: ".75rem", margin: "0 0 18px" }}>
+          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
+          ou use seu e-mail
+          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
+        </div>
 
         <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
           {mode === "register" && (

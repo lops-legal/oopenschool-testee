@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useRef } from "react";
 import { Headphones, Mic, CheckCircle2, ShieldCheck, ArrowRight, Volume2 } from "lucide-react";
@@ -27,7 +27,7 @@ export default function HardwareCheck({ onComplete, onCancel }) {
     setIsPlayingAudio(true);
     setAudioTested(true);
     if (!audioRef.current) {
-      audioRef.current = new Audio("/audios/TABERTURA.mp3");
+      audioRef.current = new Audio("/audios/TA-intro.mp3");
     }
     audioRef.current.currentTime = 0;
     audioRef.current.play().catch((err) => console.log("Audio play error:", err));

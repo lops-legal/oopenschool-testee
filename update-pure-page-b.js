@@ -1,10 +1,10 @@
-"use client";
-// Supabase auth integration
+import fs from "fs";
 
+const targetPath = "C:/Users/100OS/Documents/oopenschool-testee/src/app/page.js";
 
-import React, { useState, useEffect, useCallback } from "react";
-import AuthScreen from "@/components/auth/AuthScreen";
-import { supabase } from "@/lib/supabase";
+const content = `"use client";
+
+import React, { useState, useEffect } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import HardwareCheck from "@/components/assessment/HardwareCheck";
 import ModuleProgressBar from "@/components/assessment/ModuleProgressBar";
@@ -12,7 +12,7 @@ import AudioPlayerEngine from "@/components/assessment/AudioPlayerEngine";
 import VoiceRecorderEngine from "@/components/assessment/VoiceRecorderEngine";
 
 import {
-  FORMA_A,
+  FORMA_B,
   OPENING_AUDIO,
   FINAL_AUDIO,
   MODULE_BLOCKS
@@ -33,40 +33,18 @@ import {
   X
 } from "lucide-react";
 
-async function ensureParticipantProfile(authUser) {
-  const participant = {
-    id: authUser.id,
-    full_name:
-      authUser.user_metadata?.full_name?.trim() ||
-      authUser.user_metadata?.name?.trim() ||
-      authUser.email?.split("@")[0] ||
-      "Participante",
-    email: authUser.email,
-  };
-  const { data: existingParticipant, error: lookupError } = await supabase
-    .from("participants")
-    .select("id")
-    .eq("id", authUser.id)
-    .maybeSingle();
-
-  if (lookupError || existingParticipant) return lookupError;
-  const { error: insertError } = await supabase.from("participants").insert(participant);
-  return insertError;
-}
-
+const PARTICIPANT = {
+  id: "participant_preview_001",
+  name: "Lucas"
+};
 
 export default function Home() {
-  // Auth & Session states
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [sessionId, setSessionId] = useState("");
-
-  // Navigation & Screen states
+  // Navigation & Screen states: "entry" | "dashboard" | "hardware" | "assessment" | "complete"
   const [screen, setScreen] = useState("entry");
   const [activeTab, setActiveTab] = useState("overview");
 
-  // Pure Forma A (100% transcribed via Groq Whisper API)
-  const questions = FORMA_A;
+  // Pure Forma B (27 questions with 100% native TB audio files)
+  const questions = FORMA_B;
 
   // Assessment Engine States
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -76,160 +54,12 @@ export default function Home() {
   const [userResponses, setUserResponses] = useState({});
   const [assessmentStatus, setAssessmentStatus] = useState("READY");
 
-  // Safe session persistence in localStorage
-  const saveLocalSession = useCallback((sessionData) => {
-    if (typeof window === "undefined") return;
-    try {
-      if (sessionData?.userId) {
-        localStorage.setItem(`oss_session_${sessionData.userId}`, JSON.stringify(sessionData));
-      }
-    } catch (e) {
-      console.warn("Could not save session to localStorage:", e);
-    }
-  }, []);
-
-  const clearLocalSession = useCallback((userId) => {
-    if (typeof window === "undefined" || !userId) return;
-    try {
-      localStorage.removeItem(`oss_session_${userId}`);
-    } catch (e) {
-      console.warn("Could not clear session from localStorage:", e);
-    }
-  }, []);
-
-  // Restore saved assessment session
-  const restoreLocalSession = useCallback((userId) => {
-    if (typeof window === "undefined" || !userId) return false;
-    try {
-      const raw = localStorage.getItem(`oss_session_${userId}`);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
-      if (data && data.sessionId && data.assessmentStatus !== "SUBMITTED") {
-        setSessionId(data.sessionId);
-        setCurrentStepIndex(typeof data.currentStepIndex === "number" ? data.currentStepIndex : 0);
-        setShowOpening(Boolean(data.showOpening));
-        setUserResponses(data.userResponses || {});
-        setAssessmentStatus(data.assessmentStatus || "READY");
-        if (data.screen === "assessment" || data.screen === "hardware") {
-          setScreen(data.screen);
-        }
-        return true;
-      }
-    } catch (e) {
-      console.warn("Could not restore session from localStorage:", e);
-    }
-    return false;
-  }, []);
-
-  // Load existing session on mount
-  useEffect(() => {
-    let isMounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!isMounted) return;
-      const signedInUser = data?.session?.user ?? null;
-      setUser(signedInUser);
-      if (signedInUser) {
-        void ensureParticipantProfile(signedInUser);
-        restoreLocalSession(signedInUser.id);
-      }
-      setAuthLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!isMounted) return;
-      const signedInUser = session?.user ?? null;
-      setUser(signedInUser);
-      if (signedInUser) {
-        void ensureParticipantProfile(signedInUser);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [restoreLocalSession]);
-
-  // Sync state to localStorage whenever assessment state changes
-  useEffect(() => {
-    if (!user?.id || !sessionId || assessmentStatus === "SUBMITTED") return;
-    if (screen === "assessment" || screen === "hardware") {
-      saveLocalSession({
-        userId: user.id,
-        sessionId,
-        screen,
-        currentStepIndex,
-        showOpening,
-        userResponses,
-        assessmentStatus,
-        updatedAt: new Date().toISOString()
-      });
-    }
-  }, [user, sessionId, screen, currentStepIndex, showOpening, userResponses, assessmentStatus, saveLocalSession]);
-
-  const handleLogout = useCallback(async () => {
-    if (user?.id) clearLocalSession(user.id);
-    await supabase.auth.signOut();
-    setUser(null);
-    setScreen("entry");
-    setAssessmentStatus("READY");
-  }, [user, clearLocalSession]);
-
   // Current question computation
   const currentQuestion = questions[currentStepIndex];
   const currentModuleIndex = currentQuestion ? currentQuestion.moduleIndex : 0;
 
-  const generateUUID = () => {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  };
-
   // Handle starting assessment flow
-  const handleStartAssessment = async () => {
-    if (!user?.id) return;
-
-    // Contas criadas antes do trigger de participants podem existir apenas no
-    // Supabase Auth. Garante o perfil publico antes de criar a avaliacao, pois
-    // sessions.participant_id possui uma chave estrangeira para ele.
-    const participantError = await ensureParticipantProfile(user);
-
-    if (participantError) {
-      console.error("Failed to ensure participant profile:", participantError);
-      window.alert(
-        `Não foi possível preparar seu perfil no banco. ${participantError.message}`
-      );
-      return;
-    }
-
-    const nextSessionId = generateUUID();
-    const { error } = await supabase.from("sessions").insert({
-      id: nextSessionId,
-      participant_id: user.id,
-      form: "A",
-      status: "in_progress",
-      started_at: new Date().toISOString(),
-      total_questions: questions.length,
-    });
-    if (error) {
-      console.error("Failed to create assessment session:", error);
-      window.alert(
-        `Não foi possível iniciar a sessão no banco. ${error.message}`
-      );
-      return;
-    }
-    setSessionId(nextSessionId);
-    setUserResponses({});
-    setCurrentStepIndex(0);
-    setShowOpening(true);
-    setIsAudioFinished(false);
-    setIsReadyToAnswer(false);
-    setAssessmentStatus("IN_PROGRESS");
+  const handleStartAssessment = () => {
     setScreen("hardware");
   };
 
@@ -243,7 +73,7 @@ export default function Home() {
   };
 
   // Move to next step in assessment engine
-  const handleNextStep = async () => {
+  const handleNextStep = () => {
     if (showOpening) {
       setShowOpening(false);
       setIsAudioFinished(false);
@@ -251,13 +81,13 @@ export default function Home() {
       return;
     }
 
-    // Advance from Pitch Prep or Case Intro directly to next item
-    if (currentQuestion && (currentQuestion.kind === "prep" || currentQuestion.kind === "intro")) {
+    // Advance from Pitch Prep directly to Pitch Question in recording mode
+    if (currentQuestion && currentQuestion.kind === "prep") {
       const nextIndex = currentStepIndex + 1;
       if (nextIndex < questions.length) {
         setCurrentStepIndex(nextIndex);
-        setIsAudioFinished(false);
-        setIsReadyToAnswer(false);
+        setIsAudioFinished(true);
+        setIsReadyToAnswer(true);
       }
       return;
     }
@@ -270,17 +100,6 @@ export default function Home() {
       setIsReadyToAnswer(false);
     } else {
       // Assessment Completed
-      const { error } = await supabase
-        .from("sessions")
-        .update({ status: "completed", completed_at: new Date().toISOString() })
-        .eq("id", sessionId)
-        .eq("participant_id", user.id);
-      if (error) {
-        console.error("Failed to submit assessment session:", error);
-        window.alert("As respostas foram salvas, mas o status final não pôde ser atualizado. Tente concluir novamente.");
-        return;
-      }
-      if (user?.id) clearLocalSession(user.id);
       setAssessmentStatus("SUBMITTED");
       setScreen("complete");
     }
@@ -296,7 +115,7 @@ export default function Home() {
 
   const handleExitAssessment = () => {
     const confirmed = window.confirm(
-      "Deseja pausar a avaliação e voltar ao painel? Seu progresso foi salvo e você poderá continuar depois."
+      "Tem certeza que deseja sair da avaliação? Suas respostas desta sessão serão perdidas."
     );
     if (confirmed) {
       setScreen("dashboard");
@@ -307,7 +126,7 @@ export default function Home() {
   const handleCardTapQuestion = (e) => {
     if (e.target.closest("button, a, input, [role='button'], .mode, audio")) return;
     if (!isReadyToAnswer) {
-      if (currentQuestion && (currentQuestion.kind === "prep" || currentQuestion.kind === "intro")) {
+      if (currentQuestion && currentQuestion.kind === "prep") {
         handleNextStep();
       } else {
         setIsReadyToAnswer(true);
@@ -319,14 +138,6 @@ export default function Home() {
     if (e.target.closest("button, a, input, [role='button'], .mode, audio")) return;
     handleNextStep();
   };
-
-  // Auth gate
-  if (authLoading) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"var(--bg, #0d0d0d)" }}>
-      <div className="brand"><span className="logo">O</span><span><small>Open Startup</small>School</span></div>
-    </div>
-  );
-  if (!user) return <AuthScreen onAuthSuccess={(u) => { setUser(u); setScreen("entry"); }} />;
 
   return (
     <>
@@ -342,7 +153,7 @@ export default function Home() {
                   School
                 </span>
               </div>
-              <div className="eyebrow">P01 · Baseline formativo (Forma A)</div>
+              <div className="eyebrow">P01 · Baseline formativo (Forma B)</div>
               <h1>Conheça suas <span className="hero-highlight">competências empreendedoras</span>.</h1>
               <p className="lead" style={{ margin: "18px 0 28px" }}>
                 Uma experiência estruturada de aproximadamente 60 minutos para observar conhecimento,
@@ -365,7 +176,7 @@ export default function Home() {
                     <div className="muted">Avaliações, histórico e Laudos P01.</div>
                   </div>
                   <div className="mini-item">
-                    <strong>Avaliação guiada — Forma A</strong>
+                    <strong>Avaliação guiada — Forma B</strong>
                     <div className="muted">27 estímulos em áudio e respostas faladas.</div>
                   </div>
                   <div className="mini-item">
@@ -385,7 +196,7 @@ export default function Home() {
           <Sidebar
             activePage={activeTab}
             setActivePage={setActiveTab}
-            onLogout={handleLogout}
+            onLogout={() => setScreen("entry")}
           />
 
           <main className="main-content">
@@ -395,7 +206,7 @@ export default function Home() {
                 <div className="topline">
                   <div>
                     <div className="eyebrow">Área do participante</div>
-                    <h1>Boa noite, {(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}.</h1>
+                    <h1>Boa noite, {PARTICIPANT.name}.</h1>
                   </div>
                   <div className="badge">
                     <span
@@ -408,7 +219,7 @@ export default function Home() {
                 <div className="grid-2">
                   <div className="card hero">
                     <div className="eyebrow">Próxima avaliação</div>
-                    <h2>Baseline de Competências Empreendedoras — Forma A</h2>
+                    <h2>Baseline de Competências Empreendedoras — Forma B</h2>
                     <p className="muted" style={{ margin: "12px 0" }}>
                       Sessão individual de aproximadamente 60 minutos, com perguntas em áudio oficial,
                       respostas faladas e tempo controlado.
@@ -423,7 +234,7 @@ export default function Home() {
                         <span className="muted">respostas gravadas</span>
                       </div>
                       <div>
-                        <b>Forma A</b>
+                        <b>Forma B</b>
                         <span className="muted">27 estímulos</span>
                       </div>
                     </div>
@@ -447,7 +258,7 @@ export default function Home() {
                         <div className="t-body">
                           <strong>Avaliação disponível</strong>
                           <div className="muted" style={{ fontSize: 13 }}>
-                            Pronta para iniciar com áudio oficial da Forma A.
+                            Pronta para iniciar com áudio oficial da Forma B.
                           </div>
                         </div>
                       </div>
@@ -487,7 +298,7 @@ export default function Home() {
                 <div className="section-head" style={{ marginTop: 36 }}>
                   <div>
                     <div className="eyebrow">Estrutura da Prova</div>
-                    <h2>Blocos do Instrumento P01 — Forma A</h2>
+                    <h2>Blocos do Instrumento P01 — Forma B</h2>
                   </div>
                 </div>
 
@@ -516,7 +327,7 @@ export default function Home() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <h3>P01 — Baseline de Competências Empreendedoras</h3>
-                      <p className="muted">Forma A • 27 estímulos sequenciais com áudios oficiais</p>
+                      <p className="muted">Forma B • 27 estímulos sequenciais com áudios oficiais</p>
                     </div>
                     {assessmentStatus === "READY" ? (
                       <button className="btn accent" onClick={handleStartAssessment}>
@@ -584,8 +395,8 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="card" style={{ marginTop: 20 }}>
-                  <p><strong>Nome:</strong> {(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}</p>
-                  <p className="muted" style={{ marginTop: 8 }}><strong>ID:</strong> {user?.id}</p>
+                  <p><strong>Nome:</strong> {PARTICIPANT.name}</p>
+                  <p className="muted" style={{ marginTop: 8 }}><strong>ID:</strong> {PARTICIPANT.id}</p>
                 </div>
               </section>
             )}
@@ -634,7 +445,7 @@ export default function Home() {
 
           <main className="assess-main">
             {showOpening ? (
-              /* OFFICIAL OPENING SCREEN — Forma A (TABERTURA.mp3) */
+              /* OFFICIAL OPENING SCREEN — FORMA B (TABERTURA.mp3) */
               <div
                 className="center-card tap-card"
                 onClick={handleCardTapOpening}
@@ -667,34 +478,8 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-            ) : currentQuestion?.kind === "intro" ? (
-              /* CASE INTRO SCREEN — Bloco 3 Think-Aloud Intro (TA-CASE-INTRO.mp3) */
-              <div className="center-card tap-card" onClick={handleCardTapOpening}>
-                <div className="eyebrow">Bloco 3 — Desafio de negócio</div>
-                <h2>Desafio de Negócio / Think-Aloud</h2>
-                <p className="lead" style={{ margin: "16px 0", whiteSpace: "pre-line" }}>
-                  {currentQuestion?.text}
-                </p>
-
-                <AudioPlayerEngine
-                  audioFile={currentQuestion?.audioFile || "TA-CASE-INTRO.mp3"}
-                  onAudioEnded={() => setIsAudioFinished(true)}
-                  onUserReadyToAnswer={handleNextStep}
-                  isCover={true}
-                />
-
-                <div className="actions" style={{ justifyContent: "center", marginTop: 24 }}>
-                  <button
-                    className="btn primary"
-                    onClick={handleNextStep}
-                    style={{ width: "100%", maxWidth: 380 }}
-                  >
-                    Iniciar Desafio de Negócio →
-                  </button>
-                </div>
-              </div>
             ) : currentQuestion?.kind === "prep" ? (
-              /* PITCH PREPARATION SCREEN (SILENT PREPARATION) — Forma A (TA-PITCH-PREP.mp3) */
+              /* PITCH PREPARATION SCREEN (SILENT PREPARATION) — FORMA B (TB-PITCH-PREP.mp3) */
               <div className="center-card tap-card" onClick={handleCardTapOpening}>
                 <div className="eyebrow">Bloco 4 — Síntese e apresentação</div>
                 <h2>Prepare sua proposta.</h2>
@@ -703,7 +488,7 @@ export default function Home() {
                 </p>
 
                 <AudioPlayerEngine
-                  audioFile={currentQuestion?.audioFile || "TA-PITCH-PREP.mp3"}
+                  audioFile={currentQuestion?.audioFile || "TB-PITCH-PREP.mp3"}
                   onAudioEnded={() => setIsAudioFinished(true)}
                   onUserReadyToAnswer={handleNextStep}
                   isCover={true}
@@ -724,7 +509,7 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              /* STANDARD QUESTION SCREEN — Forma A */
+              /* STANDARD QUESTION SCREEN — FORMA B */
               <div
                 className="q-shell tap-card"
                 onClick={handleCardTapQuestion}
@@ -740,13 +525,7 @@ export default function Home() {
                     </div>
                     <div className="muted">{currentQuestion?.block}</div>
                   </div>
-                  <div className="badge">
-                    {currentQuestion?.kind === "thinkaloud"
-                      ? "Think-Aloud"
-                      : currentQuestion?.kind === "pitch"
-                      ? "Pitch"
-                      : currentQuestion?.block?.split("—")[1]?.trim() || "Questão"}
-                  </div>
+                  <div className="badge">{currentQuestion?.id}</div>
                 </div>
 
                 <div className="card q-card">
@@ -760,12 +539,11 @@ export default function Home() {
                     />
                   ) : (
                     <VoiceRecorderEngine
-                      sessionId={sessionId}
                       seconds={currentQuestion?.seconds || 60}
                       silencePrompt={currentQuestion?.silencePrompt}
                       silenceAfter={currentQuestion?.silenceAfter}
-                      participantId={user?.id}
-                      participantName={(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}
+                      participantId={PARTICIPANT.id}
+                      participantName={PARTICIPANT.name}
                       questionId={currentQuestion?.id}
                       onFinishResponse={handleVoiceRecorded}
                     />
@@ -777,7 +555,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 5. COMPLETE SCREEN — Forma A (TTELA FINAL.mp3) */}
+      {/* 5. COMPLETE SCREEN — FORMA B (TTELA FINAL.mp3) */}
       {screen === "complete" && (
         <div className="assess-wrapper">
           <main className="assess-main">
@@ -828,3 +606,7 @@ export default function Home() {
     </>
   );
 }
+`;
+
+fs.writeFileSync(targetPath, content, "utf8");
+console.log("page.js updated to 100% pure Forma B with proper audio and CSS flow.");

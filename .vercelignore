@@ -1,0 +1,17 @@
+.env
+.env.*
+supa
+node_modules
+.next
+recordings
+audios
+testes-audios-amabile
+transcricoes
+transcricoes-amabile
+transcricoes-forma-a.json
+local-whisper-router
+benchmark
+*.wav
+*.mp3
+*.mp4
+*.webm

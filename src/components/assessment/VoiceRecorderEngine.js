@@ -89,7 +89,7 @@ export default function VoiceRecorderEngine({
       recorded_at: new Date().toISOString(),
     });
 
-    if (dbError) console.warn("Metadados nao salvos:", dbError.message);
+    if (dbError) throw new Error("Falha ao salvar metadados: " + dbError.message);
 
     return { saved: true, audioPath: filePath };
   };
