@@ -10,7 +10,6 @@ import HardwareCheck from "@/components/assessment/HardwareCheck";
 import ModuleProgressBar from "@/components/assessment/ModuleProgressBar";
 import AudioPlayerEngine from "@/components/assessment/AudioPlayerEngine";
 import VoiceRecorderEngine from "@/components/assessment/VoiceRecorderEngine";
-import TextInputEngine from "@/components/assessment/TextInputEngine";
 import ProctorGuard from "@/components/assessment/ProctorGuard";
 
 import {
@@ -24,8 +23,6 @@ import {
   Play,
   CheckCircle2,
   Clock,
-  Mic,
-  PenTool,
   Shield,
   FileText,
   Lock,
@@ -78,7 +75,6 @@ export default function Home() {
   const [isReadyToAnswer, setIsReadyToAnswer] = useState(false);
   const [userResponses, setUserResponses] = useState({});
   const [assessmentStatus, setAssessmentStatus] = useState("READY");
-  const [answeringMode, setAnsweringMode] = useState("audio"); // "audio" | "text"
   const [tabSwitches, setTabSwitches] = useState(0);
 
   // Safe session persistence in localStorage
@@ -295,14 +291,6 @@ export default function Home() {
     setUserResponses((prev) => ({
       ...prev,
       [currentQuestion.id]: savedRecording
-    }));
-    handleNextStep();
-  };
-
-  const handleTextSubmitted = (savedText) => {
-    setUserResponses((prev) => ({
-      ...prev,
-      [currentQuestion.id]: savedText
     }));
     handleNextStep();
   };
@@ -749,83 +737,15 @@ export default function Home() {
                       onUserReadyToAnswer={() => setIsReadyToAnswer(true)}
                     />
                   ) : (
-                    <div>
-                      {/* Mode Selector - Standard questions allow Text or Audio; Think-Aloud and Pitch are strictly Audio */}
-                      {currentQuestion?.kind !== "thinkaloud" && currentQuestion?.kind !== "pitch" ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 10,
-                            marginBottom: 18,
-                            borderBottom: "1px solid var(--border)",
-                            paddingBottom: 14,
-                            alignItems: "center"
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className={`btn ${answeringMode === "audio" ? "accent" : "ghost"}`}
-                            style={{ fontSize: 13, padding: "6px 14px", borderRadius: 8 }}
-                            onClick={() => setAnsweringMode("audio")}
-                          >
-                            <Mic size={15} /> Responder por Áudio ({currentQuestion?.seconds || 45}s)
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn ${answeringMode === "text" ? "accent" : "ghost"}`}
-                            style={{ fontSize: 13, padding: "6px 14px", borderRadius: 8 }}
-                            onClick={() => setAnsweringMode("text")}
-                          >
-                            <PenTool size={15} /> Responder por Texto (3 min)
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          className="card"
-                          style={{
-                            padding: "10px 14px",
-                            background: "rgba(235, 94, 40, 0.08)",
-                            border: "1px solid var(--accent)",
-                            borderRadius: 10,
-                            marginBottom: 16,
-                            fontSize: 13,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8
-                          }}
-                        >
-                          <Mic size={16} color="var(--accent)" />
-                          <span>
-                            <strong>Think-Aloud em áudio obrigatório:</strong> Fale em voz alta enquanto raciocina para captar sua linha de pensamento.
-                          </span>
-                        </div>
-                      )}
-
-                      {answeringMode === "audio" || currentQuestion?.kind === "thinkaloud" || currentQuestion?.kind === "pitch" ? (
-                        <VoiceRecorderEngine
-                          sessionId={sessionId}
-                          seconds={currentQuestion?.seconds || 60}
-                          silencePrompt={currentQuestion?.silencePrompt}
-                          silenceAfter={currentQuestion?.silenceAfter}
-                          participantId={user?.id}
-                          participantName={(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}
-                          questionId={currentQuestion?.id}
-                          onFinishResponse={handleVoiceRecorded}
-                        />
-                      ) : (
-                        <TextInputEngine
-                          sessionId={sessionId}
-                          seconds={180}
-                          minChars={200}
-                          maxChars={2000}
-                          tabSwitches={tabSwitches}
-                          participantId={user?.id}
-                          participantName={(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}
-                          questionId={currentQuestion?.id}
-                          onFinishResponse={handleTextSubmitted}
-                        />
-                      )}
-                    </div>
+                    <VoiceRecorderEngine
+                      sessionId={sessionId}
+                      silencePrompt={currentQuestion?.silencePrompt}
+                      silenceAfter={currentQuestion?.silenceAfter}
+                      participantId={user?.id}
+                      participantName={(user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Participante")}
+                      questionId={currentQuestion?.id}
+                      onFinishResponse={handleVoiceRecorded}
+                    />
                   )}
                 </div>
               </div>

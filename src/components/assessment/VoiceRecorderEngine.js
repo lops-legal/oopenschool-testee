@@ -23,13 +23,13 @@ export default function VoiceRecorderEngine({
   participantName,
   questionId,
   sessionId,
-  seconds,
   silencePrompt,
   silenceAfter,
   onFinishResponse,
 }) {
+  // requesting | recording | stopping | saving | saved | error
   const [status, setStatus] = useState("requesting");
-  const [timeLeft, setTimeLeft] = useState(seconds);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [showSilenceWarning, setShowSilenceWarning] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
@@ -41,6 +41,7 @@ export default function VoiceRecorderEngine({
   const silenceTimerRef = useRef(null);
   const mountedRef = useRef(true);
   const stoppingRef = useRef(false);
+  const elapsedSecondsRef = useRef(0);
   const onFinishResponseRef = useRef(onFinishResponse);
   onFinishResponseRef.current = onFinishResponse;
 
@@ -60,11 +61,13 @@ export default function VoiceRecorderEngine({
     if (!recorder || recorder.state !== "recording") return;
     stoppingRef.current = true;
     clearTimers();
-    setStatus("saving");
+    // Feedback visual imediato antes do navegador finalizar o MediaRecorder.
+    if (mountedRef.current) setStatus("stopping");
     recorder.stop();
   };
 
-  // Upload para Supabase Storage
+  // Upload para Supabase Storage + registro em responses (comportamento original:
+  // uma tentativa por envio; em caso de erro, "Tentar novamente" reinicia a gravacao).
   const uploadRecording = async (blob) => {
     const ext = extensionFor(blob.type);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -85,7 +88,7 @@ export default function VoiceRecorderEngine({
       session_id: sessionId,
       question_id: questionId,
       audio_path: filePath,
-      duration_seconds: seconds - timeLeft,
+      duration_seconds: elapsedSecondsRef.current,
       recorded_at: new Date().toISOString(),
     });
 
@@ -99,7 +102,8 @@ export default function VoiceRecorderEngine({
     mountedRef.current = true;
     stoppingRef.current = false;
     audioChunksRef.current = [];
-    setTimeLeft(seconds);
+    elapsedSecondsRef.current = 0;
+    setElapsedSeconds(0);
     setStatus("requesting");
     setErrorMessage("");
     setShowSilenceWarning(false);
@@ -139,6 +143,7 @@ export default function VoiceRecorderEngine({
             }
             return;
           }
+          if (!cancelled && mountedRef.current) setStatus("saving");
           try {
             const result = await uploadRecording(blob);
             if (!cancelled && mountedRef.current) {
@@ -156,11 +161,10 @@ export default function VoiceRecorderEngine({
         recorder.start(1000);
         setStatus("recording");
 
+        // Cronometro informativo: conta o tempo decorrido, sem interromper a gravacao.
         timerIntervalRef.current = setInterval(() => {
-          setTimeLeft((prev) => {
-            if (prev <= 1) { setTimeout(stopRecording, 0); return 0; }
-            return prev - 1;
-          });
+          elapsedSecondsRef.current += 1;
+          setElapsedSeconds(elapsedSecondsRef.current);
         }, 1000);
 
         if (silencePrompt && silenceAfter) {
@@ -188,7 +192,7 @@ export default function VoiceRecorderEngine({
       if (r?.state === "recording") r.stop();
       stopTracks();
     };
-  }, [participantId, participantName, questionId, sessionId, retryKey, seconds, silenceAfter, silencePrompt]);
+  }, [participantId, participantName, questionId, sessionId, retryKey, silenceAfter, silencePrompt]);
 
   const formatTime = (s) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -198,6 +202,13 @@ export default function VoiceRecorderEngine({
       <Mic size={30} style={{ marginBottom: 12 }} />
       <h3>Solicitando acesso ao microfone</h3>
       <p className="muted">Autorize o microfone para iniciar a gravacao.</p>
+    </div>
+  );
+
+  if (status === "stopping") return (
+    <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
+      <Loader2 size={32} className="spin" style={{ marginBottom: 12 }} />
+      <h3>Finalizando gravacao...</h3>
     </div>
   );
 
@@ -227,7 +238,7 @@ export default function VoiceRecorderEngine({
           <span className="pulse-dot" />
           <span>Gravando sua resposta...</span>
         </div>
-        <div className="timer">{formatTime(timeLeft)}</div>
+        <div className="timer">{formatTime(elapsedSeconds)}</div>
       </div>
       <div className="wave"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>
       {showSilenceWarning && (
