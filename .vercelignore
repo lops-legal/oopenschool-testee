@@ -4,7 +4,7 @@ supa
 node_modules
 .next
 recordings
-audios
+/audios
 testes-audios-amabile
 transcricoes
 transcricoes-amabile
