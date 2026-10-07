@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { Volume2, Play, Pause, RotateCcw, FastForward, CheckCircle } from "lucide-react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { Volume2, Play, Pause, RotateCcw, FastForward, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function AudioPlayerEngine({
   audioFile,
@@ -13,68 +13,51 @@ export default function AudioPlayerEngine({
   const [progress, setProgress] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isFinished, setIsFinished] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [audioError, setAudioError] = useState(null);
+
   const audioRef = useRef(null);
 
-  useEffect(() => {
+  const audioSrc = audioFile ? `/audios/${encodeURIComponent(audioFile)}` : "";
+
+  // Handle play/pause
+  const playAudio = useCallback(() => {
+    if (!audioRef.current) return;
+    setAudioError(null);
+    audioRef.current.volume = 1.0;
+    audioRef.current.playbackRate = playbackRate;
+    audioRef.current
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        setAutoplayBlocked(false);
+      })
+      .catch((err) => {
+        console.warn("Audio play blocked or waiting user gesture:", err);
+        setAutoplayBlocked(true);
+        setIsPlaying(false);
+      });
+  }, [playbackRate]);
+
+  const pauseAudio = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
     setIsPlaying(false);
-    setProgress(0);
-    setIsFinished(false);
-
-    const audioPath = `/audios/${audioFile}`;
-    const audio = new Audio(audioPath);
-    audioRef.current = audio;
-    audio.playbackRate = playbackRate;
-
-    const handleTimeUpdate = () => {
-      if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
-      }
-    };
-
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setProgress(100);
-      setIsFinished(true);
-      if (onAudioEnded) {
-        onAudioEnded();
-      }
-    };
-
-    audio.addEventListener("timeupdate", handleTimeUpdate);
-    audio.addEventListener("ended", handleEnded);
-
-    // Auto play audio prompt
-    audio.play().then(() => {
-      setIsPlaying(true);
-    }).catch((err) => {
-      console.warn("Autoplay blocked or audio load error:", err);
-    });
-
-    return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", handleTimeUpdate);
-      audio.removeEventListener("ended", handleEnded);
-    };
-  }, [audioFile]);
+  }, []);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
     if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
+      pauseAudio();
     } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch((err) => console.log(err));
+      playAudio();
     }
   };
 
   const handleReplay = () => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = 0;
-    audioRef.current.play();
-    setIsPlaying(true);
     setIsFinished(false);
+    playAudio();
   };
 
   const toggleSpeed = () => {
@@ -86,11 +69,111 @@ export default function AudioPlayerEngine({
     }
   };
 
+  // Audio lifecycle
+  useEffect(() => {
+    setIsPlaying(false);
+    setProgress(0);
+    setIsFinished(false);
+    setAutoplayBlocked(false);
+    setAudioError(null);
+
+    const audio = audioRef.current;
+    if (!audio || !audioSrc) return;
+
+    audio.load();
+    audio.playbackRate = playbackRate;
+    audio.volume = 1.0;
+
+    // Attempt auto play
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+          setAutoplayBlocked(false);
+        })
+        .catch((err) => {
+          console.log("Browser policy blocked autoplay, waiting user click:", err);
+          setAutoplayBlocked(true);
+          setIsPlaying(false);
+        });
+    }
+
+    return () => {
+      if (audio) {
+        audio.pause();
+      }
+    };
+  }, [audioSrc]);
+
   return (
     <div style={{ marginBottom: 16 }}>
+      {/* Hidden native audio element */}
+      <audio
+        ref={audioRef}
+        src={audioSrc}
+        preload="auto"
+        onTimeUpdate={() => {
+          const audio = audioRef.current;
+          if (audio && audio.duration) {
+            setProgress((audio.currentTime / audio.duration) * 100);
+          }
+        }}
+        onEnded={() => {
+          setIsPlaying(false);
+          setProgress(100);
+          setIsFinished(true);
+          if (onAudioEnded) onAudioEnded();
+        }}
+        onError={(e) => {
+          console.error("Audio element error:", e);
+          setAudioError("Não foi possível carregar o áudio. Tente novamente.");
+          setIsPlaying(false);
+        }}
+      />
+
+      {autoplayBlocked && !isPlaying && !isFinished && (
+        <div
+          onClick={playAudio}
+          style={{
+            background: "rgba(235, 94, 40, 0.12)",
+            border: "1px solid var(--accent, #eb5e28)",
+            color: "var(--ink)",
+            borderRadius: 12,
+            padding: "14px 18px",
+            marginBottom: 14,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Volume2 size={22} color="var(--accent)" />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>
+              Clique aqui para ouvir a pergunta em áudio
+            </span>
+          </div>
+          <button className="btn accent" style={{ minHeight: 34, padding: "4px 14px", fontSize: 13 }} onClick={playAudio}>
+            <Play size={14} /> Ouvir agora
+          </button>
+        </div>
+      )}
+
+      {audioError && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, background: "#fee2e2", color: "#991b1b", display: "flex", alignItems: "center", gap: 8 }}>
+          <AlertCircle size={18} />
+          <span style={{ fontSize: 13 }}>{audioError}</span>
+          <button className="btn ghost" style={{ marginLeft: "auto", fontSize: 12 }} onClick={playAudio}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       <div className="mode">
         <div className="mode-label">
-          <span className="pulse-dot" />
+          <span className={"pulse-dot" + (isPlaying ? " live" : "")} />
           <span>{isPlaying ? "Reproduzindo áudio" : isFinished ? "Leitura concluída" : "Áudio pausado"}</span>
         </div>
 
@@ -98,7 +181,7 @@ export default function AudioPlayerEngine({
           <button
             onClick={togglePlay}
             className="btn ghost"
-            style={{ minHeight: 36, padding: "6px 12px", fontSize: 13 }}
+            style={{ minHeight: 36, padding: "6px 14px", fontSize: 13, fontWeight: 600 }}
           >
             {isPlaying ? <Pause size={15} /> : <Play size={15} />}
             {isPlaying ? "Pausar" : "Ouvir"}
@@ -107,7 +190,7 @@ export default function AudioPlayerEngine({
           <button
             onClick={handleReplay}
             className="btn ghost"
-            title="Reouvir áudio"
+            title="Reouvir áudio do início"
             style={{ minHeight: 36, padding: "6px 10px", fontSize: 12 }}
           >
             <RotateCcw size={14} />
@@ -160,3 +243,4 @@ export default function AudioPlayerEngine({
     </div>
   );
 }
+

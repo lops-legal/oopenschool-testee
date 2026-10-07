@@ -303,23 +303,6 @@ export default function Home() {
     }
   };
 
-  // Uniform tap behavior: clicking on question card transitions to audio recording mode
-  const handleCardTapQuestion = (e) => {
-    if (e.target.closest("button, a, input, [role='button'], .mode, audio")) return;
-    if (!isReadyToAnswer) {
-      if (currentQuestion && (currentQuestion.kind === "prep" || currentQuestion.kind === "intro")) {
-        handleNextStep();
-      } else {
-        setIsReadyToAnswer(true);
-      }
-    }
-  };
-
-  const handleCardTapOpening = (e) => {
-    if (e.target.closest("button, a, input, [role='button'], .mode, audio")) return;
-    handleNextStep();
-  };
-
   // Auth gate
   if (authLoading) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"var(--bg, #0d0d0d)" }}>
@@ -634,12 +617,8 @@ export default function Home() {
 
           <main className="assess-main">
             {showOpening ? (
-              /* OFFICIAL OPENING SCREEN — Forma A (TABERTURA.mp3) */
-              <div
-                className="center-card tap-card"
-                onClick={handleCardTapOpening}
-              >
-                <ChevronRight className="tap-hint right" size={20} />
+              /* OFFICIAL OPENING SCREEN — Forma A (TA-intro.mp3) */
+              <div className="center-card">
                 <div className="eyebrow">00:00–02:00 • Abertura Oficial</div>
                 <h2>Instruções Iniciais</h2>
 
@@ -669,7 +648,7 @@ export default function Home() {
               </div>
             ) : currentQuestion?.kind === "intro" ? (
               /* CASE INTRO SCREEN — Bloco 3 Think-Aloud Intro (TA-CASE-INTRO.mp3) */
-              <div className="center-card tap-card" onClick={handleCardTapOpening}>
+              <div className="center-card">
                 <div className="eyebrow">Bloco 3 — Desafio de negócio</div>
                 <h2>Desafio de Negócio / Think-Aloud</h2>
                 <p className="lead" style={{ margin: "16px 0", whiteSpace: "pre-line" }}>
@@ -695,7 +674,7 @@ export default function Home() {
               </div>
             ) : currentQuestion?.kind === "prep" ? (
               /* PITCH PREPARATION SCREEN (SILENT PREPARATION) — Forma A (TA-PITCH-PREP.mp3) */
-              <div className="center-card tap-card" onClick={handleCardTapOpening}>
+              <div className="center-card">
                 <div className="eyebrow">Bloco 4 — Síntese e apresentação</div>
                 <h2>Prepare sua proposta.</h2>
                 <p className="lead" style={{ margin: "16px 0", whiteSpace: "pre-line" }}>
@@ -725,14 +704,7 @@ export default function Home() {
               </div>
             ) : (
               /* STANDARD QUESTION SCREEN — Forma A */
-              <div
-                className="q-shell tap-card"
-                onClick={handleCardTapQuestion}
-              >
-                {!isReadyToAnswer && (
-                  <ChevronRight className="tap-hint right" size={20} />
-                )}
-
+              <div className="q-shell">
                 <div className="q-head">
                   <div>
                     <div className="q-index">
