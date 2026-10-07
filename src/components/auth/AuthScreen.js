@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -42,24 +42,6 @@ export default function AuthScreen({ onAuthSuccess }) {
       console.error("Login request failed:", requestError);
       setError("Não foi possível conectar ao Supabase. Verifique sua conexão e tente novamente.");
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    if (!isSupabaseConfigured) {
-      setError("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (oauthError) {
-      console.error("Google OAuth failed:", oauthError);
-      setError("Não foi possível iniciar o login com Google. Verifique a configuração do provedor.");
       setLoading(false);
     }
   };
@@ -127,22 +109,6 @@ export default function AuthScreen({ onAuthSuccess }) {
         </h2>
 
         {error && <div className="auth-error">{error}</div>}
-
-        <button
-          className="btn"
-          type="button"
-          disabled={loading}
-          onClick={handleGoogleSignIn}
-          style={{ width: "100%", justifyContent: "center", border: "1px solid var(--border)", marginBottom: 18 }}
-        >
-          <span style={{ color: "#4285F4", fontWeight: 800, fontSize: "1.1rem" }}>G</span>
-          Continuar com Google
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: ".75rem", margin: "0 0 18px" }}>
-          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
-          ou use seu e-mail
-          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
-        </div>
 
         <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
           {mode === "register" && (
