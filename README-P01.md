@@ -2,6 +2,11 @@
 
 Aplicação Next.js completa da avaliação gamificada Forma A, com autenticação Supabase, dashboard do participante, checagem de hardware, 27 estímulos, reprodução dos áudios oficiais, gravação por microfone e envio das respostas ao Supabase Storage.
 
+As respostas de voz são capturadas com o codec Opus a 24 kbps. Conforme o
+navegador, o contêiner será WebM (`.webm`) ou Ogg (`.ogg`); nos dois casos o
+codec do áudio é Opus. A estimativa de armazenamento é de cerca de 180 KB por
+minuto de fala, sem contar o pequeno overhead do contêiner.
+
 ## Configuração
 
 1. Crie ou abra um projeto no Supabase.

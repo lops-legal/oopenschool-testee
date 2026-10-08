@@ -186,6 +186,8 @@ grant update, delete on public.responses to authenticated;
 -- -----------------------------------------------------------------------------
 -- Storage privado para as respostas de audio
 -- O caminho gerado pelo app e: <user_id>/<session_id>/<question_id>__<data>.webm
+-- As gravacoes usam o codec Opus a 24 kbps em container WebM (ou Ogg, quando
+-- oferecido pelo navegador). MP3, WAV e MP4 nao sao aceitos para novas capturas.
 -- -----------------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -194,7 +196,7 @@ values (
   'recordings',
   false,
   104857600,
-  array['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav']
+  array['audio/webm', 'audio/ogg']
 )
 on conflict (id) do update
 set public = excluded.public,

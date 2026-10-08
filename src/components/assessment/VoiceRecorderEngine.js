@@ -4,18 +4,22 @@ import React, { useEffect, useRef, useState } from "react";
 import { Mic, AlertCircle, Square, RotateCcw, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const MIME_TYPES = [
+const OPUS_MIME_TYPES = [
   "audio/webm;codecs=opus",
-  "audio/webm",
   "audio/ogg;codecs=opus",
-  "audio/mp4",
 ];
+
+// 24 kbps preserves clear speech while keeping each minute near 180 KB.
+const OPUS_AUDIO_BITS_PER_SECOND = 24_000;
 
 function extensionFor(mimeType) {
   if (!mimeType) return "webm";
   if (mimeType.includes("ogg")) return "ogg";
-  if (mimeType.includes("mp4")) return "m4a";
   return "webm";
+}
+
+function baseMimeType(mimeType) {
+  return mimeType?.split(";", 1)[0] || "audio/webm";
 }
 
 export default function VoiceRecorderEngine({
@@ -86,7 +90,7 @@ export default function VoiceRecorderEngine({
     const { error: uploadError } = await supabase.storage
       .from("recordings")
       .upload(filePath, blob, {
-        contentType: blob.type || "audio/webm",
+        contentType: baseMimeType(blob.type),
         upsert: false,
       });
 
@@ -134,8 +138,14 @@ export default function VoiceRecorderEngine({
           throw new Error("O microfone selecionado nao esta disponivel.");
         }
 
-        const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const mimeType = OPUS_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+        if (!mimeType) {
+          throw new Error("Este navegador nao oferece gravacao em Opus. Atualize o navegador e tente novamente.");
+        }
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          audioBitsPerSecond: OPUS_AUDIO_BITS_PER_SECOND,
+        });
         mediaRecorderRef.current = recorder;
 
         recorder.ondataavailable = (e) => {
@@ -150,7 +160,7 @@ export default function VoiceRecorderEngine({
         };
         recorder.onstop = async () => {
           clearTimers(); stopTracks();
-          const audioType = recorder.mimeType || mimeType || "audio/webm";
+          const audioType = recorder.mimeType || mimeType;
           const blob = new Blob(audioChunksRef.current, { type: audioType });
           if (blob.size === 0) {
             if (!cancelled && mountedRef.current) {

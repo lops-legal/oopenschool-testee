@@ -1026,11 +1026,13 @@ const htmlContent = `<!DOCTYPE html>
     // Audio Recorder & MediaRecorder
     async function startRecording() {
       try {
+        const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus']
+          .find(t => MediaRecorder.isTypeSupported(t));
+        if (!mimeType) throw new Error('Este navegador nao oferece gravacao em Opus.');
+
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
-        
-        const mimeType = ['audio/webm', 'audio/ogg', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
-        mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 24000 });
 
         mediaRecorder.ondataavailable = (e) => {
           if (e.data.size > 0) audioChunks.push(e.data);
@@ -1058,7 +1060,8 @@ const htmlContent = `<!DOCTYPE html>
 
         timerInterval = setInterval(updateTimer, 1000);
       } catch (err) {
-        alert('Erro ao acessar o microfone. Permita o acesso ao microfone no navegador.');
+        mediaRecorder?.stream?.getTracks().forEach(t => t.stop());
+        alert(err.message || 'Erro ao acessar o microfone. Permita o acesso no navegador.');
       }
     }
 
@@ -1112,7 +1115,8 @@ const htmlContent = `<!DOCTYPE html>
       statusEl.style.display = 'block';
       statusEl.innerText = 'Salvando resposta no Supabase...';
 
-      const ext = recordedBlob.type.includes('ogg') ? 'ogg' : recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
+      const ext = recordedBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      const contentType = recordedBlob.type.split(';', 1)[0] || 'audio/webm';
       const filePath = \`\${currentUser.id}/\${currentSessionId}_\${q.id}.\${ext}\`;
 
       if (supabaseClient) {
@@ -1120,7 +1124,7 @@ const htmlContent = `<!DOCTYPE html>
           // 1. Upload audio to storage bucket 'recordings'
           const { error: uploadError } = await supabaseClient.storage
             .from('recordings')
-            .upload(filePath, recordedBlob, { contentType: recordedBlob.type, upsert: true });
+            .upload(filePath, recordedBlob, { contentType, upsert: true });
 
           if (uploadError) console.warn('Storage upload error:', uploadError);
 
