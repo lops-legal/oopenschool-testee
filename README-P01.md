@@ -28,6 +28,31 @@ Credenciais iniciais definidas no SQL:
 
 Troque essas duas constantes no bloco `BOOTSTRAP DO ADMIN` antes de executar em um ambiente real.
 
+## Transcrição automática
+
+Todo áudio do bucket `recordings` entra numa fila (`public.transcriptions`); o
+bucket é a fonte da verdade, mesmo quando a linha em `responses` se perdeu. A
+Edge Function `transcribe-worker`, chamada pelo `pg_cron` a cada minuto, baixa
+o áudio, transcreve com o Groq (`whisper-large-v3-turbo`, rodízio entre
+`GROQ_API_KEY_1..N`) e grava o texto. Só admins leem os resultados:
+
+- `session_summary`: uma linha por sessão (completude e progresso).
+- `session_answers`: respostas válidas de cada sessão na ordem da Forma A, com
+  pergunta e transcrição.
+- `recordings_catalog`: todos os áudios, com o motivo quando não são válidos.
+
+Instalação (uma vez, nesta ordem):
+
+```bash
+npx supabase login
+npx supabase secrets set --env-file .env --project-ref ovaiapivmpcwneyqeddy
+npx supabase functions deploy transcribe-worker --project-ref ovaiapivmpcwneyqeddy --no-verify-jwt --use-api
+```
+
+Depois rode `supabase/admins.sql` e `supabase/transcriptions.sql` no SQL Editor.
+Sempre publique a função com `--no-verify-jwt`: o cron se autentica pelo
+header `x-worker-secret`, cujo valor fica no Vault.
+
 ## Arquivos principais
 
 - `src/app/page.js`: fluxo completo da plataforma.
