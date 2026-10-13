@@ -218,13 +218,15 @@ select public.sync_transcription_queue();
 -- vivem so nas views.
 
 -- Contas usadas para testar a plataforma. O app nao consegue gravar esta
--- coluna (ver os grants de supabase/admins.sql).
+-- coluna (ver os grants de supabase/admins.sql). Os emails reais nao ficam
+-- no repositorio (ele e publico): troque os exemplos abaixo antes de rodar,
+-- ou marque is_test pelo Table Editor.
 alter table public.participants
   add column if not exists is_test boolean not null default false;
 
 update public.participants
 set is_test = true
-where lower(email) in ('lucascardososilva@usp.br', 'boml41195@gmail.com');
+where lower(email) in ('teste1@exemplo.com', 'teste2@exemplo.com');
 
 create or replace view public.recordings_catalog
 with (security_invoker = true)

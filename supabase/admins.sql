@@ -72,7 +72,8 @@ create policy recordings_select_admin
 on storage.objects for select to authenticated
 using (bucket_id = 'recordings' and (select public.is_admin()));
 
--- 5. Promove as contas
+-- 5. Promove as contas da equipe. Os emails reais nao ficam no repositorio
+-- (ele e publico): troque os exemplos abaixo antes de rodar.
 insert into public.participants (id, full_name, email, role)
 select
   u.id,
@@ -80,21 +81,18 @@ select
   u.email,
   'admin'
 from auth.users u
-where lower(u.email) in ('lucascardososilva@usp.br', 'luccaroswelld@gmail.com')
+where lower(u.email) in ('admin1@exemplo.com', 'admin2@exemplo.com')
 on conflict (id) do update
   set role = 'admin';
 
--- 6. Conferencia: as duas contas devem aparecer com role = admin. Confira se
--- created_at bate com quando voces criaram as contas: o cadastro e aberto e
--- sem confirmacao de email, entao qualquer pessoa pode registrar um email.
--- admin@openstartup.school e a conta de bootstrap do setup.sql, cuja senha
--- esta no repositorio publico: se aparecer, apague em Authentication > Users.
+-- 6. Conferencia: lista todos os admins. Confira se created_at bate com
+-- quando voces criaram as contas: o cadastro e aberto e sem confirmacao de
+-- email, entao qualquer pessoa pode registrar um email. A ultima linha
+-- aparece se existir admin@openstartup.school, a conta padrao de versoes
+-- antigas do setup.sql, cuja senha esta no historico publico do repositorio:
+-- nesse caso, apague-a em Authentication > Users.
 select u.email, u.created_at, u.last_sign_in_at, coalesce(p.role, '(sem perfil)') as role
 from auth.users u
 left join public.participants p on p.id = u.id
-where lower(u.email) in (
-  'lucascardososilva@usp.br',
-  'luccaroswelld@gmail.com',
-  'admin@openstartup.school'
-)
+where p.role = 'admin' or lower(u.email) = 'admin@openstartup.school'
 order by u.email;

@@ -21,12 +21,8 @@ npm run dev
 
 Acesse `http://localhost:3000`.
 
-Credenciais iniciais definidas no SQL:
-
-- Email: `admin@openstartup.school`
-- Senha: `Admin@P01!2026`
-
-Troque essas duas constantes no bloco `BOOTSTRAP DO ADMIN` antes de executar em um ambiente real.
+Não há conta admin padrão. Crie a conta pelo app e promova-a com
+`supabase/admins.sql` (edite a lista de emails do passo 5 antes de rodar).
 
 ## Transcrição automática
 
