@@ -5,12 +5,26 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { LogIn, UserPlus, Eye, EyeOff, Loader2 } from "lucide-react";
 
 // O Supabase limita cadastros e logins por IP: numa sala com o mesmo Wi-Fi,
-// todos dividem o limite. Nao e senha errada, e so esperar.
+// todos dividem o limite. Entram 30 de uma vez e o resto conforme o limite
+// repoe (2 por segundo). O app tenta de novo sozinho, com espera crescente e
+// aleatoria para a turma nao voltar toda no mesmo instante.
+const RATE_LIMIT_RETRIES = 6;
+const RATE_LIMIT_WAITING = "Muitas pessoas entrando ao mesmo tempo. Tentando de novo em instantes...";
 const RATE_LIMIT_MESSAGE =
   "Muitas pessoas entrando ao mesmo tempo nesta rede. Aguarde 1 minuto e tente de novo.";
 
 function isRateLimited(error) {
   return error?.status === 429 || error?.code === "over_request_rate_limit";
+}
+
+async function withRateLimitRetry(request, onWait) {
+  for (let attempt = 0; ; attempt += 1) {
+    const result = await request();
+    if (!isRateLimited(result.error) || attempt >= RATE_LIMIT_RETRIES) return result;
+    onWait();
+    const delay = Math.min(15_000, 1_000 * 2 ** attempt) + Math.random() * 1_000;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
 }
 
 export default function AuthScreen({ onAuthSuccess }) {
@@ -34,10 +48,13 @@ export default function AuthScreen({ onAuthSuccess }) {
     setLoading(true);
     setError("");
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: form.email.trim(),
-        password: form.password,
-      });
+      const { data, error } = await withRateLimitRetry(
+        () => supabase.auth.signInWithPassword({
+          email: form.email.trim(),
+          password: form.password,
+        }),
+        () => setError(RATE_LIMIT_WAITING)
+      );
       if (error) {
         setError(
           isRateLimited(error)
@@ -48,6 +65,7 @@ export default function AuthScreen({ onAuthSuccess }) {
         );
         return;
       }
+      setError("");
       onAuthSuccess(data.user);
     } catch (requestError) {
       console.error("Login request failed:", requestError);
@@ -68,11 +86,14 @@ export default function AuthScreen({ onAuthSuccess }) {
     setLoading(true);
     setError("");
 
-    const { data, error } = await supabase.auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: { data: { full_name: form.name.trim() } },
-    });
+    const { data, error } = await withRateLimitRetry(
+      () => supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: { data: { full_name: form.name.trim() } },
+      }),
+      () => setError(RATE_LIMIT_WAITING)
+    );
     setLoading(false);
 
     if (error) {
@@ -83,6 +104,7 @@ export default function AuthScreen({ onAuthSuccess }) {
           : error.message);
       return;
     }
+    setError("");
 
     if (data?.session) {
       const { data: existingProfile, error: profileLookupError } = await supabase
