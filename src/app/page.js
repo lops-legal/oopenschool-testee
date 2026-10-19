@@ -50,7 +50,11 @@ async function ensureParticipantProfile(authUser) {
     .maybeSingle();
 
   if (lookupError || existingParticipant) return lookupError;
-  const { error: insertError } = await supabase.from("participants").insert(participant);
+  // O cadastro e o carregamento da pagina criam o perfil quase juntos: quem
+  // chegar depois so ignora o duplicado.
+  const { error: insertError } = await supabase
+    .from("participants")
+    .upsert(participant, { onConflict: "id", ignoreDuplicates: true });
   return insertError;
 }
 

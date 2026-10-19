@@ -113,11 +113,11 @@ export default function AuthScreen({ onAuthSuccess }) {
         .eq("id", data.user.id)
         .maybeSingle();
       const profileError = profileLookupError || (!existingProfile
-        ? (await supabase.from("participants").insert({
+        ? (await supabase.from("participants").upsert({
             id: data.user.id,
             full_name: form.name.trim(),
             email: form.email.trim(),
-          })).error
+          }, { onConflict: "id", ignoreDuplicates: true })).error
         : null);
       if (profileError) {
         console.error("Failed to create participant profile:", profileError);
