@@ -49,6 +49,46 @@ Depois rode `supabase/admins.sql` e `supabase/transcriptions.sql` no SQL Editor.
 Sempre publique a função com `--no-verify-jwt`: o cron se autentica pelo
 header `x-worker-secret`, cujo valor fica no Vault.
 
+## Exportação para o Google Drive
+
+Cada sessão vira um Google Doc com a transcrição pura (sem correção) das
+respostas válidas, na ordem da Forma A. A Edge Function
+`export-transcriptions` entrega as sessões em JSON; o Apps Script
+`integrations/google-drive/Code.gs`, instalado na conta dona da pasta, busca
+esse JSON a cada hora e cria ou atualiza os Docs. Uma sessão só é exportada
+quando nada dela está na fila e não chega gravação nova há 30 minutos. Um Doc
+só é reescrito quando a sessão muda no banco.
+
+```bash
+npx supabase secrets set EXPORT_SECRET=<valor-aleatorio> --project-ref ovaiapivmpcwneyqeddy
+npx supabase functions deploy export-transcriptions --project-ref ovaiapivmpcwneyqeddy --no-verify-jwt --use-api
+npx supabase functions deploy backup-export --project-ref ovaiapivmpcwneyqeddy --no-verify-jwt --use-api
+```
+
+As duas funções se autenticam pelo header `x-export-secret`. A instalação do
+script (propriedades `EXPORT_URL`, `EXPORT_SECRET`, `FOLDER_ID` e
+`BACKUP_FOLDER_ID`, depois executar `instalar`) está no cabeçalho do `Code.gs`.
+
+## Backup
+
+O plano atual do Supabase não guarda backups. O mesmo Apps Script roda
+`fazerBackup` a cada hora: a função `backup-export` entrega as tabelas do app e
+links assinados dos áudios, e o script grava `banco/banco-AAAA-MM-DD.json` (um
+por dia) e `audios/<participante>/<sessão>/` na pasta do backup. Só copia os
+áudios que ainda não estão lá (`manifesto-audios.json`); arquivos apagados do
+bucket continuam no Drive.
+
+## Proteção dos dados
+
+`supabase/hardening.sql` (rode no SQL Editor depois dos outros scripts) faz o
+banco recusar áudio e resposta fora de uma sessão do próprio participante, uma
+segunda linha para o mesmo áudio e os privilégios que o app não usa (TRUNCATE,
+DELETE, acesso anônimo). Participantes não apagam nem alteram o que gravaram.
+
+No dia da avaliação presencial, o limite de cadastro e login por IP
+(Authentication > Rate Limits > sign ups and sign ins) precisa estar em 300 ou
+mais: a turma inteira sai pelo mesmo IP do Wi-Fi.
+
 ## Arquivos principais
 
 - `src/app/page.js`: fluxo completo da plataforma.
