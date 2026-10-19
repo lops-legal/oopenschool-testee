@@ -4,6 +4,15 @@ import React, { useState } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { LogIn, UserPlus, Eye, EyeOff, Loader2 } from "lucide-react";
 
+// O Supabase limita cadastros e logins por IP: numa sala com o mesmo Wi-Fi,
+// todos dividem o limite. Nao e senha errada, e so esperar.
+const RATE_LIMIT_MESSAGE =
+  "Muitas pessoas entrando ao mesmo tempo nesta rede. Aguarde 1 minuto e tente de novo.";
+
+function isRateLimited(error) {
+  return error?.status === 429 || error?.code === "over_request_rate_limit";
+}
+
 export default function AuthScreen({ onAuthSuccess }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -31,9 +40,11 @@ export default function AuthScreen({ onAuthSuccess }) {
       });
       if (error) {
         setError(
-          /failed to fetch|network/i.test(error.message)
-            ? "Não foi possível conectar ao Supabase. Verifique sua conexão e tente novamente."
-            : "Email ou senha incorretos. Verifique e tente novamente."
+          isRateLimited(error)
+            ? RATE_LIMIT_MESSAGE
+            : /failed to fetch|network/i.test(error.message)
+              ? "Não foi possível conectar ao Supabase. Verifique sua conexão e tente novamente."
+              : "Email ou senha incorretos. Verifique e tente novamente."
         );
         return;
       }
@@ -65,9 +76,11 @@ export default function AuthScreen({ onAuthSuccess }) {
     setLoading(false);
 
     if (error) {
-      setError(error.message.includes("already registered")
-        ? "Este email ja possui cadastro. Faca login."
-        : error.message);
+      setError(isRateLimited(error)
+        ? RATE_LIMIT_MESSAGE
+        : error.message.includes("already registered")
+          ? "Este email ja possui cadastro. Faca login."
+          : error.message);
       return;
     }
 

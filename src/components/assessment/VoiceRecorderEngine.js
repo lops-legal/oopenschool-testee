@@ -22,6 +22,34 @@ function baseMimeType(mimeType) {
   return mimeType?.split(";", 1)[0] || "audio/webm";
 }
 
+// Rede instavel nao pode custar a resposta: o audio fica guardado e o envio
+// e repetido sozinho, com espera crescente, antes de pedir ajuda a pessoa.
+const MAX_SAVE_ATTEMPTS = 4;
+const SAVE_RETRY_DELAYS_MS = [1_000, 3_000, 7_000];
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Uma tentativa que caiu por timeout pode ter gravado o arquivo ou a linha.
+function isAlreadyStored(error) {
+  return String(error?.statusCode ?? error?.status) === "409" || /already exists|duplicate/i.test(error?.message ?? "");
+}
+
+function isDuplicateRow(error) {
+  return error?.code === "23505";
+}
+
+function isExpiredSession(error) {
+  return /jwt|token|expired/i.test(error?.message ?? "");
+}
+
+function describeSaveError(error) {
+  const message = error?.message ?? "";
+  if (/failed to fetch|network|load failed|timeout/i.test(message)) {
+    return "Sem conexao com o servidor. Confira a internet e toque em Enviar de novo: sua gravacao continua guardada.";
+  }
+  return `Nao foi possivel salvar o audio (${message || "erro desconhecido"}). Sua gravacao continua guardada: toque em Enviar de novo.`;
+}
+
 export default function VoiceRecorderEngine({
   participantId,
   participantName,
@@ -31,13 +59,16 @@ export default function VoiceRecorderEngine({
   silenceAfter,
   onFinishResponse,
 }) {
-  // requesting | recording | stopping | saving | saved | error
+  // requesting | recording | stopping | saving | saved | error | unsent
   const [status, setStatus] = useState("requesting");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [showSilenceWarning, setShowSilenceWarning] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [saveAttempt, setSaveAttempt] = useState(0);
 
+  // Gravacao concluida e ainda nao salva: sobrevive a falhas de envio.
+  const pendingRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -80,43 +111,73 @@ export default function VoiceRecorderEngine({
     }
   };
 
-  // Upload para Supabase Storage + registro em responses (comportamento original:
-  // uma tentativa por envio; em caso de erro, "Tentar novamente" reinicia a gravacao).
-  const uploadRecording = async (blob) => {
-    const ext = extensionFor(blob.type);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filePath = `${participantId}/${sessionId}/${questionId}__${timestamp}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("recordings")
-      .upload(filePath, blob, {
-        contentType: baseMimeType(blob.type),
-        upsert: false,
-      });
-
-    if (uploadError) throw new Error("Falha no upload: " + uploadError.message);
-
-    // Salvar metadados no banco
-    const { error: dbError } = await supabase.from("responses").insert({
-      participant_id: participantId,
-      session_id: sessionId,
-      question_id: questionId,
-      audio_path: filePath,
-      duration_seconds: elapsedSecondsRef.current,
-      recorded_at: new Date().toISOString(),
-    });
-
-    if (dbError) throw new Error("Falha ao salvar metadados: " + dbError.message);
-
-    return { saved: true, audioPath: filePath };
+  // Upload para o Storage + linha em responses. Cada etapa concluida fica
+  // marcada no pendente, entao uma nova tentativa so refaz o que faltou.
+  const saveRecording = async (pending) => {
+    if (!pending.uploaded) {
+      const { error } = await supabase.storage
+        .from("recordings")
+        .upload(pending.row.audio_path, pending.blob, {
+          contentType: pending.contentType,
+          upsert: false,
+        });
+      if (error && !isAlreadyStored(error)) throw error;
+      pending.uploaded = true;
+    }
+    if (!pending.saved) {
+      const { error } = await supabase.from("responses").insert(pending.row);
+      if (error && !isDuplicateRow(error)) throw error;
+      pending.saved = true;
+    }
+    return { saved: true, audioPath: pending.row.audio_path };
   };
+
+  const sendPending = async () => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    let lastError = null;
+    for (let attempt = 1; attempt <= MAX_SAVE_ATTEMPTS; attempt += 1) {
+      if (!mountedRef.current) return;
+      setSaveAttempt(attempt);
+      setStatus("saving");
+      try {
+        const result = await saveRecording(pending);
+        pendingRef.current = null;
+        if (!mountedRef.current) return;
+        setStatus("saved");
+        onFinishResponseRef.current?.(result);
+        return;
+      } catch (error) {
+        lastError = error;
+        console.error(`Upload error (tentativa ${attempt}):`, error);
+        if (isExpiredSession(error)) await supabase.auth.refreshSession().catch(() => {});
+        if (attempt < MAX_SAVE_ATTEMPTS) await wait(SAVE_RETRY_DELAYS_MS[attempt - 1]);
+      }
+    }
+    if (!mountedRef.current) return;
+    setStatus("unsent");
+    setErrorMessage(describeSaveError(lastError));
+  };
+
+  // Fechar a aba com audio nao enviado perderia a resposta: o navegador avisa.
+  useEffect(() => {
+    if (status !== "saving" && status !== "unsent") return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [status]);
 
   useEffect(() => {
     let cancelled = false;
     mountedRef.current = true;
     stoppingRef.current = false;
+    pendingRef.current = null;
     audioChunksRef.current = [];
     elapsedSecondsRef.current = 0;
+    setSaveAttempt(0);
     setElapsedSeconds(0);
     setStatus("requesting");
     setErrorMessage("");
@@ -169,19 +230,26 @@ export default function VoiceRecorderEngine({
             }
             return;
           }
-          if (!cancelled && mountedRef.current) setStatus("saving");
-          try {
-            const result = await uploadRecording(blob);
-            if (!cancelled && mountedRef.current) {
-              setStatus("saved"); onFinishResponseRef.current?.(result);
-            }
-          } catch (err) {
-            console.error("Upload error:", err);
-            if (!cancelled && mountedRef.current) {
-              stoppingRef.current = false; setStatus("error");
-              setErrorMessage(err.message || "Nao foi possivel salvar o audio.");
-            }
-          }
+          // Sair da tela no meio da gravacao nao conclui a resposta. Enviar o
+          // trecho criaria uma primeira tomada parcial, que valeria sobre a
+          // resposta completa gravada ao voltar.
+          if (cancelled || !mountedRef.current) return;
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          pendingRef.current = {
+            blob,
+            contentType: baseMimeType(blob.type),
+            uploaded: false,
+            saved: false,
+            row: {
+              participant_id: participantId,
+              session_id: sessionId,
+              question_id: questionId,
+              audio_path: `${participantId}/${sessionId}/${questionId}__${timestamp}.${extensionFor(blob.type)}`,
+              duration_seconds: elapsedSecondsRef.current,
+              recorded_at: new Date().toISOString(),
+            },
+          };
+          await sendPending();
         };
 
         // Do not pass a timeslice: some Safari/Chromium combinations can emit
@@ -244,7 +312,27 @@ export default function VoiceRecorderEngine({
     <div className="card" style={{ textAlign: "center", padding: 36, marginTop: 20 }}>
       <Loader2 size={32} className="spin" style={{ marginBottom: 12 }} />
       <h3>{status === "saved" ? "Audio salvo" : "Salvando audio..."}</h3>
-      <p className="muted">Enviando para o servidor antes de prosseguir...</p>
+      <p className="muted">
+        {saveAttempt > 1 && status === "saving"
+          ? `Conexao instavel: tentativa ${saveAttempt} de ${MAX_SAVE_ATTEMPTS}. Sua gravacao esta guardada.`
+          : "Enviando para o servidor antes de prosseguir..."}
+      </p>
+    </div>
+  );
+
+  if (status === "unsent") return (
+    <div className="card" style={{ textAlign: "center", padding: 30, marginTop: 20 }}>
+      <AlertCircle color="var(--danger, #b42318)" size={32} style={{ marginBottom: 12 }} />
+      <h3>Resposta gravada, mas ainda nao enviada</h3>
+      <p className="muted" style={{ margin: "10px 0 18px" }}>{errorMessage}</p>
+      <div className="actions" style={{ justifyContent: "center" }}>
+        <button className="btn primary" onClick={sendPending}>
+          <RotateCcw size={16} /> Enviar de novo
+        </button>
+        <button className="btn ghost" onClick={() => setRetryKey((v) => v + 1)}>
+          Gravar de novo
+        </button>
+      </div>
     </div>
   );
 

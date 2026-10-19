@@ -191,9 +191,60 @@ export default function Home() {
     });
   };
 
+  // Retoma a ultima sessao aberta no banco (outro aparelho, cache limpo). Uma
+  // sessao nova separaria as respostas da mesma pessoa e reiniciaria a prova.
+  const resumeOpenSession = async () => {
+    const { data: openSessions, error: openError } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("participant_id", user.id)
+      .eq("status", "in_progress")
+      .order("started_at", { ascending: false })
+      .limit(1);
+    if (openError || !openSessions?.length) return false;
+
+    const openSessionId = openSessions[0].id;
+    // Respostas escritas da versao antiga ("TEXT: ...") nao contam: a pergunta
+    // ainda precisa do audio.
+    const { data: answered, error: answeredError } = await supabase
+      .from("responses")
+      .select("question_id, audio_path")
+      .eq("session_id", openSessionId)
+      .not("audio_path", "like", "TEXT:%");
+    if (answeredError) return false;
+
+    const answeredById = Object.fromEntries(
+      (answered || []).map((row) => [row.question_id, { saved: true, audioPath: row.audio_path }])
+    );
+    const lastAnswered = questions.reduce((last, q, index) => (answeredById[q.id] ? index : last), -1);
+    setSessionId(openSessionId);
+    setUserResponses(answeredById);
+    setAssessmentStatus("IN_PROGRESS");
+    setIsAudioFinished(false);
+    setIsReadyToAnswer(false);
+    if (lastAnswered < 0) {
+      setCurrentStepIndex(0);
+      setShowOpening(true);
+      setScreen("hardware");
+    } else {
+      setCurrentStepIndex(Math.min(lastAnswered + 1, questions.length - 1));
+      setShowOpening(false);
+      setScreen("assessment");
+    }
+    return true;
+  };
+
   // Handle starting assessment flow
   const handleStartAssessment = async () => {
     if (!user?.id) return;
+
+    // Pausou neste aparelho: o estado local ja aponta onde a pessoa parou.
+    if (assessmentStatus === "IN_PROGRESS" && sessionId) {
+      setIsAudioFinished(false);
+      setIsReadyToAnswer(false);
+      setScreen(showOpening && currentStepIndex === 0 ? "hardware" : "assessment");
+      return;
+    }
 
     // Contas criadas antes do trigger de participants podem existir apenas no
     // Supabase Auth. Garante o perfil publico antes de criar a avaliacao, pois
@@ -207,6 +258,9 @@ export default function Home() {
       );
       return;
     }
+
+    // "Refazer avaliacao" abre uma sessao nova de proposito.
+    if (assessmentStatus !== "SUBMITTED" && (await resumeOpenSession())) return;
 
     const nextSessionId = generateUUID();
     const { error } = await supabase.from("sessions").insert({
@@ -413,7 +467,11 @@ export default function Home() {
                     </div>
                     <div className="actions">
                       <button className="btn accent" onClick={handleStartAssessment}>
-                        {assessmentStatus === "SUBMITTED" ? "Refazer avaliação →" : "Iniciar avaliação →"}
+                        {assessmentStatus === "SUBMITTED"
+                          ? "Refazer avaliação →"
+                          : assessmentStatus === "IN_PROGRESS"
+                            ? "Continuar avaliação →"
+                            : "Iniciar avaliação →"}
                       </button>
                       <button className="btn ghost" onClick={() => setActiveTab("assessments")}>
                         Ver detalhes
