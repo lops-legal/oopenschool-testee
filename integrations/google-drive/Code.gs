@@ -5,7 +5,8 @@
  *   correcao) de cada resposta valida, na ordem da Forma A. Le a Edge Function
  *   `export-transcriptions`. Sessoes novas viram Docs novos; um Doc so e
  *   reescrito quando a sessao muda no banco. Docs que ja estao na pasta e citam
- *   "Sessão <uuid>" sao adotados em vez de duplicados.
+ *   "Sessão <uuid>" sao adotados em vez de duplicados e ficam como estao: nada
+ *   que a equipe tenha editado neles e sobrescrito.
  * - `fazerBackup`: copia de seguranca fora do Supabase. Le a Edge Function
  *   `backup-export` e grava as tabelas do app (um JSON por dia em banco/) e
  *   cada audio do bucket (audios/<participante>/<sessao>/), so os que faltam.
@@ -15,7 +16,8 @@
  *   2. Configuracoes do projeto > Propriedades do script:
  *        EXPORT_URL        https://<ref>.supabase.co/functions/v1/export-transcriptions
  *        EXPORT_SECRET     o mesmo valor do secret EXPORT_SECRET das funcoes
- *        FOLDER_ID         id da pasta dos Docs (o trecho da URL depois de /folders/)
+ *        FOLDER_ID         id da pasta dos Docs (o trecho da URL depois de /folders/);
+ *                          hoje: 180xi4lj-BR6GR1GMzIQCYJU8t4_ZtZ8e, "01 - Transcrições originais"
  *        BACKUP_FOLDER_ID  id da pasta do backup
  *   3. Execute `instalar` e autorize. Ele agenda as duas rotinas e roda a
  *      sincronizacao. O primeiro backup roda na hora seguinte, ou execute
@@ -66,7 +68,7 @@ function sincronizar() {
       sessionsPerParticipant[key] = (sessionsPerParticipant[key] || 0) + 1;
     });
 
-    const counts = { criados: 0, atualizados: 0, sem_mudanca: 0, aguardando: 0 };
+    const counts = { criados: 0, atualizados: 0, adotados: 0, sem_mudanca: 0, aguardando: 0 };
     payload.sessions.forEach((session) => {
       if (!session.ready) {
         counts.aguardando += 1;
@@ -77,6 +79,13 @@ function sincronizar() {
       const hash = resumo_(session, title);
       const entry = registry[session.session_id];
       const existing = entry && docAtivo_(entry.docId);
+      if (existing && entry.hash === '') {
+        // Doc que ja estava na pasta: vale como esta. So muda se a sessao mudar.
+        registry[session.session_id] = { docId: entry.docId, hash: hash };
+        properties.setProperty(SESSION_KEY_PREFIX + session.session_id, JSON.stringify(registry[session.session_id]));
+        counts.adotados += 1;
+        return;
+      }
       if (existing && entry.hash === hash) {
         counts.sem_mudanca += 1;
         return;
@@ -221,8 +230,8 @@ function lerRegistro_(properties) {
 }
 
 // Registra Docs da pasta que ainda nao estao no registro (por exemplo, os
-// exportados a mao antes da integracao). Hash vazio: sao reescritos no
-// formato atual na proxima sincronizacao.
+// exportados a mao antes da integracao). Hash vazio: na primeira sincronizacao
+// o hash da sessao e gravado sem reescrever o Doc.
 function adotarDocsDaPasta_(folder, registry, properties) {
   const knownDocs = {};
   Object.keys(registry).forEach((sessionId) => {
@@ -277,7 +286,7 @@ function dataDaSessao_(session) {
 }
 
 function tituloDoDoc_(session, form, repeated) {
-  const title = 'Transcrições P01 Forma ' + form + ': ' + nomeDoParticipante_(session);
+  const title = 'P01 — Forma ' + form + ' — Transcrição — ' + nomeDoParticipante_(session);
   return repeated ? title + ' (' + dataDaSessao_(session) + ')' : title;
 }
 

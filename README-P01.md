@@ -69,6 +69,12 @@ As duas funções se autenticam pelo header `x-export-secret`. A instalação do
 script (propriedades `EXPORT_URL`, `EXPORT_SECRET`, `FOLDER_ID` e
 `BACKUP_FOLDER_ID`, depois executar `instalar`) está no cabeçalho do `Code.gs`.
 
+Os Docs vão para a pasta "01 - Transcrições originais" (`FOLDER_ID`
+`180xi4lj-BR6GR1GMzIQCYJU8t4_ZtZ8e`), dentro de "04 - Transcrições P01 | Forma
+A", com o título `P01 — Forma A — Transcrição — <nome>`. Docs que já estão na
+pasta e citam a sessão são adotados sem reescrever. O worker `transcribe-worker`
+só grava o texto no Supabase; quem escreve no Drive é o Apps Script.
+
 ## Backup
 
 O plano atual do Supabase não guarda backups. O mesmo Apps Script roda
