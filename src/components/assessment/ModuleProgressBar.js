@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { MODULE_COVERS } from "@/data/canonicalData";
 
 export default function ModuleProgressBar({ currentModuleIndex, currentStepIndex, totalSteps }) {
   const moduleNames = [
